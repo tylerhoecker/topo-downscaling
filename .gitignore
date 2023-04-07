@@ -6,7 +6,7 @@ old/
 
 # Data folder (files generally too large)
 data/
-
+output/
 # History files
 .Rhistory
 .Rapp.history
