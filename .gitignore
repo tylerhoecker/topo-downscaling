@@ -1,3 +1,12 @@
+# XML files created by opening rasters in QGIS
+.xml
+
+# Local trash bin
+old/
+
+# Data folder (files generally too large)
+data/
+
 # History files
 .Rhistory
 .Rapp.history
