@@ -76,7 +76,7 @@ fine_buffers <- buffer(fine_pts, width = buff_dist)
 # Save crs
 out_crs <- crs(template_general)
 
-rm(template_general,coarse_general,fine_pts)
+rm(template_general,coarse_general,fine_pts,coarse_pts)
 gc()
 
 # ------------------------------------------------------------------------------
@@ -159,7 +159,6 @@ gc()
         buff_idx_25 <- dists > nug_dist & dists < 25000
         buff_idx_50 <- dists > nug_dist & dists < 50000
         
-        
         # Fine-grid information from fine-grid focal location
         X <- fine_coords[pt_id,'x']
         Y <- fine_coords[pt_id,'y']
@@ -176,9 +175,12 @@ gc()
           # Inexing (filtering) rows with distances less than nugget
           'di' = dists)
         
-        model_df_l <- list(model_df[buff_idx_15,], model_df[buff_idx_25,], model_df[buff_idx_50,])
-        names(model_df_l) <- c('buff_15','buff_25','buff_50')
-        
+        # Create a list of dataframes for each buffer distance
+        model_df_l <- list('buff_15' = model_df[buff_idx_15,], 
+                           'buff_25' = model_df[buff_idx_25,], 
+                           'buff_50'= model_df[buff_idx_50,])
+
+        # Perform GIDS calculation with data from within each buffer distance
         model_out_df <- model_df_l |>  
           imap_dfr(\(model_df, buff){
             # Fit linear model

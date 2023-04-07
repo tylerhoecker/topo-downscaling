@@ -5,7 +5,7 @@ library(ggplot2)
 terraclim <- rast('data/cogs/def_hist_1981_2010_cog.tif') 
 names(terraclim) <- 'terra_val'
 
-tile <- 'grand'
+tile <- 'glac'
 
 tile_list <- list.files('output/def/', pattern = paste0('buff.*_',tile,'.tiff$'), full.names = T)
 #grand_list <- list.files('output/def/', pattern = 'buff.*_grand.tiff$', full.names = T)
@@ -45,10 +45,11 @@ ggplot(slice_sample(tile_sample, n = 5000)) +
               aes(intercept = intercept, slope = slope), linewidth = 0.75, color = 'red') +
   geom_abline(intercept = 0, slope = 1, linewidth = 0.75, color = 'blue') +
   geom_label(data = model_df,
-             aes(x = 1700, y = 800, label = r2)) + #x = 100, y = 450  
+             aes(x = 100, y = 450, label = r2)) + #x = 100, y = 450  x = 1700, y = 800
   facet_grid(buff~method) +
   theme_bw(base_size = 14) +
-  labs(x = 'Predicted 250-m value', y = 'TerraClimate 4-km at fine centroid')
+  labs(x = 'Predicted 250-m value', y = 'TerraClimate 4-km at fine centroid',
+       title = tile)
 
 ggsave(paste0('fits_',tile,'.png'), width = 8, height = 6, dpi = 300)
 
@@ -57,7 +58,7 @@ ggplot(tile_sample) +
   geom_histogram(aes(x = pred_val), fill = 'black') +
   facet_grid(buff~method) +
   theme_bw(base_size = 14) +
-  labs(x = 'Predicted 250-m value', y = 'Count')
+  labs(x = 'Predicted 250-m value', y = 'Count', title = tile)
 
 ggsave(paste0('hist_',tile,'.png'), width = 8, height = 6, dpi = 300)
 
