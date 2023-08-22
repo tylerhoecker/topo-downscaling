@@ -33,38 +33,41 @@ using('terra','gdalUtilities','purrr')
 
 # ------------------------------------------------------------------------------
 # Data paths (may not generalize)
-template_path <- file.path('data','topofire')
-ds_path <- file.path('data','terraclimate')
+# Path where the tifs in non-cog format are located
+# Do this for 'terraclimate' and 'topofire' rasters
+file_path <- file.path('data','terraclimate')
+# Path where you want to save tifs in COG format
 cogs_path <- file.path('data','cogs')
 
-# Layer names
-template_suffix <- '_topo_1981_2010.tif'
-ds_suffix <- '_2C_1961_1990.tif'
+# Climate variables 
+files <- list.files(path = file_path, pattern = '.*tif$')
 
-# Climate variables (should be one for each of template and ds)
-vars <- list('def','aet')
-# Climate variable of interest (may not generalize...)
-vars |> 
-  map(function(var){
-    # Fine-scale template
-    template_fine <- file.path(template_path,paste0(var,template_suffix))
-    names(template_fine) <- names(rast(template_fine))
-    # Raster that will be downscaled.
-    ds_coarse <- file.path(ds_path,paste0(var,ds_suffix))
-    # Crop it and save a temporary file
-    temp_path <- file.path(cogs_path,paste0(var,'temp.tif'))
-    writeRaster(crop(rast(ds_coarse), rast(template_fine)),temp_path,overwrite=T)
-    # Reset the ds path to this
-    ds_coarse <- temp_path
-    names(ds_coarse) <- names(rast(ds_coarse))
+
+# MAYBE NOT...
+# # Master grid - decide what all grids should be cropped to, so all extents match
+# grid_master <- rast('data/topofire/aet_topo_1981-2010.tif')
+
+files |> 
+  map(function(file){
+    # Original file format
+    grid_original <- rast(file.path(file_path,file))
     
-    list(template_fine, ds_coarse) |> 
-      walk(~ gdal_translate(
-        src_dataset = .x,
-        dst_dataset = file.path(cogs_path,paste0(names(.x),'_cog.tif')),
-        co = matrix(c("TILED=YES","COPY_SRC_OVERVIEWS=YES","COMPRESS=DEFLATE"),ncol = 1)
-      ))
-    unlink(temp_path)
+    # Make sure all share the same projection
+    #grid_original <- project(grid_original, grid_master)
+    grid_original_utm <- project(grid_original, "EPSG:3741")
+   
+    ## Crop the the master grid
+    #grid_original_crop <- crop(grid_original, grid_master)
+    writeRaster(grid_original_utm, paste0('temp_',file),
+                overwrite = TRUE)
+   
+    gdal_translate(
+      src_dataset = paste0('temp_',file),
+      dst_dataset = file.path(cogs_path,file),
+      co = matrix(c("TILED=YES","COPY_SRC_OVERVIEWS=YES","COMPRESS=DEFLATE"),ncol = 1)
+    )
+   
+    unlink(paste0('temp_',file))
   })
 
 
