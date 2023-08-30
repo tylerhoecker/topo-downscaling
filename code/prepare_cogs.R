@@ -35,13 +35,15 @@ using('terra','gdalUtilities','purrr')
 # Data paths (may not generalize)
 # Path where the tifs in non-cog format are located
 # Do this for 'terraclimate' and 'topofire' rasters
-file_path <- file.path('data','terraclimate')
+file_path <- file.path('data','climate')
 # Path where you want to save tifs in COG format
 cogs_path <- file.path('data','cogs')
 
 # Climate variables 
 files <- list.files(path = file_path, pattern = '.*tif$')
 
+# Load the 'water mask' based on landfire, which was created and transformed to the same CRS
+lf_water_mask <- rast('data/lf_water_mask_3741.tif')
 
 # MAYBE NOT...
 # # Master grid - decide what all grids should be cropped to, so all extents match
@@ -55,9 +57,19 @@ files |>
     # Make sure all share the same projection
     #grid_original <- project(grid_original, grid_master)
     grid_original_utm <- project(grid_original, "EPSG:3741")
+    
+    # Must crop to do the mask. This won't affect topo, but will affect terra. 
+    # Because topo doesn't extend beyond CONUS, it's moot. 
+    grid_original_utm_crop <- crop(grid_original_utm, lf_water_mask)
+    
+    # Ensure resolutions and extents match precisely
+    grid_original_match <- resample(grid_original_utm_crop, lf_water_mask)
+    
+    # Mask out water
+    grid_original_mask <- mask(grid_original_match, lf_water_mask)
    
-    ## Crop the the master grid
-    #grid_original_crop <- crop(grid_original, grid_master)
+    # Not cropping because data from Canada and Mexico can be used
+    # Write it out
     writeRaster(grid_original_utm, paste0('temp_',file),
                 overwrite = TRUE)
    
