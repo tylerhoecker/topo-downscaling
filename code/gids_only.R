@@ -18,39 +18,13 @@ using <- function(...) {
   }
 }
 
-using('purrr','furrr','tictoc','sf','exactextractr','terra','tools','tidyverse','svMisc','Rcpp','RcppArmadillo') #'terra','geosphere','parallelly','tools','stars'
-
-# Compile C++ version of linear model 
-# ------------------------------------------------------------------------------
-Rcpp::sourceCpp("code/lm_rcpp.cpp")
-
+using('purrr','tictoc','sf','exactextractr','terra','tidyverse','parallel','doParallel') 
 # ------------------------------------------------------------------------------
 
-# tic()
-# ------------------------------------------------------------------------------
-# 
-# ------------------------------------------------------------------------------
 # Layer names
 # These are both historical datasets. 1st step is to downscale historical TerraClimate
 template_suffix <- '_topo_1981-2010.tif' 
 coarse_suffix <- '_terra_1981-2010.tif'
-
-# Make tiles -------------------------------------------------------------------
-# Build information about fine-scale coordinates for this tile
-# Not necessary to build tile for coarse raster
-# Climate variable for this step is arbitary - spatial info identical for all
-template_general <- rast(file.path('data','cogs',paste0('def',template_suffix)))
-
-# For now, crop to OR and WA
-# or_wa <- sf::read_sf('../../Work/GIS/cb_2018_us_state_20m/or_wa_borders.shp') |> 
-#   st_transform("EPSG:3741")
-# template_general <- crop(template_general, or_wa)
-# rm(or_wa)
-makeTiles(template_general, ceiling(dim(template_general)/150)[1:2], 
-          filename = paste0('data/tiles/',file_path_sans_ext(template_suffix),'_.tif'), 
-          extend = TRUE, na.rm = TRUE, overwrite = TRUE)
-rm(template_general)
-# ------------------------------------------------------------------------------
 
 # Inputs for entire western US, do once
 # Load a complete coarse template 
@@ -79,14 +53,8 @@ nug_dist <- round(max(res(template_coarse)))+1
 
 # Run process over each tile
 # ------------------------------------------------------------------------------
-# RUN THIS: 
-plot(rast(file.path('data','tiles',"_topo_1981-2010_1301.tif")))
-#list.files('data/tiles')
-"_topo_1981-2010_1301.tif"|>
+list.files('data/tiles')|>
   walk(\(tile){
-    
-    tic('Per tile step')
-    
     print(paste0('Processing tile ',tile))
     
     # Load the fine template for this tile
@@ -103,115 +71,106 @@ plot(rast(file.path('data','tiles',"_topo_1981-2010_1301.tif")))
     # Template extract for all variables, within buffer distance, returns list for each buffer
     template_dat <- exact_extract(template_coarse, fine_buffers, include_xy = T, progress = T)
  
-    # Fine extract for all variables, at centroid, returns df with row for each
-    # ----- This is failing for some reason... returning null/0. terra::extact works
-    # since extract one point at a time with terra is fast, moving that below.
-    # fine_dat <- exact_extract(template_fine, fine_centroids, include_xy = T, progress = T)
-
     # Preallocate dataframe
-    # --------------- POPOULATE WITH X, Y ?
     result_df <- data.frame('pt_ID' = numeric(0), 'var' = character(0), 'gids' = numeric(0))
-    
-    toc()
     # --------------------------------------------------------------------------
-
+    
+    # Iterate over each point of `tile`
+    #---------------------------------------------------------------------------
     # Best approach appears to be a loop...! Through each element of coarse and template lists, 
     # which are dataframes, and each row of focal point centroids, which is a dataframe
-    tic('Per point step')
     
-    for (i in 1:length(coarse_dat)){ #141970
-      
-      # Distance calculations for each point in this tile
-      x_dist <- st_coordinates(fine_centroids)[i,'X'] - coarse_dat[[i]][['x']]
-      y_dist <- st_coordinates(fine_centroids)[i,'Y'] - coarse_dat[[i]][['y']]
-      dists <- sqrt( x_dist^2 + y_dist^2 )
-      coarse_dat[[i]][['di']] <- dists
-      
-      focal_result_df <- list('def','aet','tmin','tmax') |> # REPLACE HERE ALL THE YEARS... 
-        map_dfr(\(clim_var){
-          
-          # Fine-grid information from fine-grid focal location
-          Xp <- st_coordinates(fine_centroids[i,])[,'X']
-          Yp <- st_coordinates(fine_centroids[i,])[,'Y']
-          Cp <- terra::extract(template_fine, fine_centroids[i,])[[clim_var]]
-          
-          # Build dataframe with coarse-grid information from coarse grid points within buffer distance
-          # Mostly this is just re-naming things so they match the Flint and Flint nomenclature
-          model_df <- data.frame(
-            'Zi' = coarse_dat[[i]][,clim_var],
-            'Xi' = coarse_dat[[i]][,'x'],
-            'Yi' = coarse_dat[[i]][,'y'],
-            'Ci' = template_dat[[i]][,clim_var],
-            # Distances between fine-grid focal location and coarse centroids
-            'di' = coarse_dat[[i]][,'di']) 
-          
-          # Remove NAs - happens at edges
-          model_df <- na.omit(model_df)
-          
-          # Nugget effect - remove points within distance of coarse cell resolution (4000)
-          # Eliminates possible halo effect when fine and coarse cell centroids are near
-          model_df <- model_df[model_df[,'di'] > nug_dist,] 
-          
-          # LM version ---------------------------------------------------------
-          # lm_mod <- lm(Zi ~ Xi + Yi + Ci, data = model_df) 
-          
-          x_lm <- model.matrix(Zi~Xi+Yi+Ci, data = model_df) 
-          y_lm <- model_df[,'Zi']
-          lm_mod <- .lm.fit(x_lm, y_lm)
-          
-          Cx <- lm_mod$coefficients[2]
-          Cy <- lm_mod$coefficients[3]
-          Cc <- lm_mod$coefficients[4]
-          
-          # Inverse distance weighting
-          # This forumula is provided on page 5 of Flint and Flint 2012
-          sum1 <- sum(( model_df$Zi + (Xp-model_df$Xi)*Cx + (Yp-model_df$Yi)*Cy + (Cp-model_df$Ci)*Cc ) / model_df$di^2)
-          sum2 <- sum(1/model_df$di^2)
-          Z = sum1/sum2 
-          # --------------------------------------------------------------------
-          
-          # Return as dataframe
-          return(data.frame('var' = clim_var,
-                            'gids' = Z))
-        })
-      
-      result_df <- rbind(result_df, focal_result_df)
-    }
+    # Set up parallelization
+    parallel::detectCores()
+    n.cores <- parallel::detectCores() - 1
+    my.cluster <- parallel::makeCluster(
+      n.cores, 
+      type = "PSOCK"
+    )
+    #register it to be used by %dopar%
+    doParallel::registerDoParallel(cl = my.cluster)
+    
+    # Run loop in parallel
+    out <- foreach(
+      i = 1:length(coarse_dat),
+      .packages = c('sf','terra','purrr')
+      ) %dopar% {
+        
+        # Distance calculations for each point in this tile
+        # Perhaps this could be vectorized somehow, but I couldn't figure it out
+        x_dist <- st_coordinates(fine_centroids)[i,'X'] - coarse_dat[[i]][['x']]
+        y_dist <- st_coordinates(fine_centroids)[i,'Y'] - coarse_dat[[i]][['y']]
+        dists <- sqrt( x_dist^2 + y_dist^2 )
+        coarse_dat[[i]][['di']] <- dists
+        
+        # Map (apply), returning dataframe, over each climate variable 
+        focal_result_df <- list('def','aet','tmin','tmax') |> # REPLACE HERE ALL THE YEARS... 
+          map_dfr(\(clim_var){
+            
+            # Fine-grid information from fine-grid focal location
+            Xp <- st_coordinates(fine_centroids[i,])[,'X']
+            Yp <- st_coordinates(fine_centroids[i,])[,'Y']
+            Cp <- fine_centroids[i,][['mean']]
+            
+            # Build dataframe with coarse-grid information from coarse grid points within buffer distance
+            # Mostly this is just re-naming things so they match the Flint and Flint nomenclature
+            model_df <- data.frame(
+              'Zi' = coarse_dat[[i]][,clim_var],
+              'Xi' = coarse_dat[[i]][,'x'],
+              'Yi' = coarse_dat[[i]][,'y'],
+              'Ci' = template_dat[[i]][,clim_var],
+              # Distances between fine-grid focal location and coarse centroids
+              'di' = coarse_dat[[i]][,'di']) 
+            
+            # Remove NAs - happens at edges
+            model_df <- na.omit(model_df)
+            
+            # Nugget effect - remove points within distance of coarse cell resolution (4000)
+            # Eliminates possible halo effect when fine and coarse cell centroids are near
+            model_df <- model_df[model_df[,'di'] > nug_dist,] 
+            
+            # The regression
+            # lm_mod <- lm(Zi ~ Xi + Yi + Ci, data = model_df) 
+            x_lm <- model.matrix(Zi~Xi+Yi+Ci, data = model_df) 
+            y_lm <- model_df[,'Zi']
+            lm_mod <- .lm.fit(x_lm, y_lm)
+            
+            # Save regression coefficients for GIDS formula
+            Cx <- lm_mod$coefficients[2]
+            Cy <- lm_mod$coefficients[3]
+            Cc <- lm_mod$coefficients[4]
+            
+            # Inverse distance squared weighting (GIDS formula)
+            # This forumula is provided on page 5 of Flint and Flint 2012
+            sum1 <- sum(( model_df$Zi + (Xp-model_df$Xi)*Cx + (Yp-model_df$Yi)*Cy + (Cp-model_df$Ci)*Cc ) / model_df$di^2)
+            sum2 <- sum(1/model_df$di^2)
+            Z = sum1/sum2 
+            
+            # Return as dataframe (foreach works like a function)
+            return(data.frame('pt_ID' = i,
+                              'var' = clim_var,
+                              'gids' = Z))
+          })
+      }
+    
+    # End parallelization
+    parallel::stopCluster(cl = my.cluster)
     
     # Pivot the result to wide, for easy write-out as raster stack
-    result_df_wide <- result_df |> 
-      pivot_wider(names_from = var, values_from = gids) 
+    result_df_wide <- out |> 
+      bind_rows() |> 
+      pivot_wider(names_from = var, values_from = gids) |> 
+      select(-pt_ID)
     
-    # Write out this tile as a tiff
+    # Write out each layer of stack as a tiff
     st_coordinates(fine_centroids) |> 
       cbind(result_df_wide) |> 
       rast(type = 'xyz', crs = tile_rast) |> 
-      writeRaster(paste0('data/gids_output/','ds-270-m_',c('def','aet','tmin','tmax'),tile), 
+      writeRaster(paste0('data/gids_output/','ds-270-m_',c('def'),tile), 
                   overwrite = T)
     toc()
   })
 
-plot(rast("data/gids_output/ds-270-m_def_topo_1981-2010_578.tif"))
-    
-    
-            
-    
-              
-              
-              
-           
 
-
-toc()
-plan(sequential)
-
-# DELETE TILES FOR THIS clim_varIABLE!
-
-# Testing info
-complete <- rast(file.path(cogs_path,paste0('def',template_suffix)))
-tile <- crop(complete, bounds)
-(242.15   *(ncell(complete)/ncell(tile))) / 60 / 60
-
-# Approximately 48 compute hours per clim_variable for entire western US  
 
 
