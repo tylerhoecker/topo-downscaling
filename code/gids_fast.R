@@ -21,7 +21,7 @@ setwd('C:/Users/PC/Desktop/tyler_working')
 # Run process over each tile
 # ------------------------------------------------------------------------------
 # Set parrellelization plan
-plan(multisession, workers = 10)
+plan(multisession, workers = 20)
 
 # The variables names
 clim_vars <- c('def','aet','tmin','tmax')
@@ -30,7 +30,7 @@ buff_dist <- 50000
 
 tic('Total run time 5 tiles, 10 core')
 
-list.files('data/tiles')[3010:3015] %>% 
+list.files('data/tiles') %>% 
   future_walk(\(tile){
     
     if(file.exists(paste0('data/gids_output/ds-220-m_','def',tile))){
