@@ -1,0 +1,5 @@
+# ignore everything except .gitignore and empty subfolders
+*
+!climate_inputs*
+!cogs*
+!.gitignore

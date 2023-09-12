@@ -5,8 +5,9 @@
 old/
 
 # Data folder (files generally too large)
-data/
-output/
+# Actually, keep these, they have their own .gitignore, to preserve empty structure
+#data/
+#output/
 # History files
 .Rhistory
 .Rapp.history
