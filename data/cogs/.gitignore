@@ -1,0 +1,3 @@
+# ignore everything except .gitignore and empty subfolders
+*
+!.gitignore
