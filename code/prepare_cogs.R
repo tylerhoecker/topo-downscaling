@@ -30,6 +30,7 @@ using <- function(...) {
 }
 using('terra','gdalUtilities','purrr')
 # ------------------------------------------------------------------------------
+setwd('C:/Users/PC/Desktop/tyler_working/GitHub/topo-downscaling/')
 
 # ------------------------------------------------------------------------------
 # Data paths (may not generalize)
@@ -70,7 +71,7 @@ files |>
    
     # Not cropping because data from Canada and Mexico can be used
     # Write it out
-    writeRaster(grid_original_utm, paste0('temp_',file),
+    writeRaster(grid_original_mask, paste0('temp_',file),
                 overwrite = TRUE)
    
     gdal_translate(
