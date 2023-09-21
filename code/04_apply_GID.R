@@ -14,7 +14,7 @@ using <- function(...) {
   }
 }
 
-using('tidyr','dplyr','purrr','furrr','sf','exactextractr','terra') 
+using('tidyr','dplyr','purrr','furrr','sf','exactextractr','terra','future.callr') 
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
@@ -52,14 +52,14 @@ if (!file.exists(paste0(data_root,out_dir))) {
 # Prepare inputs
 #-------------------------------------------------------------------------------
 # Set parrellelization plan
-plan(multisession, workers = 30)
+plan(callr, workers = 40)
 #tic()
 list.files(paste0(data_root,'tiles/')) %>% 
   future_walk(\(tile){ # tile=list.files('../data/tiles')[[1]]
     
     if ( length(list.files(paste0(data_root,out_dir), 
                            pattern = paste0('.*',tile)))
-         == length(clim_vars)*length(times)) {
+         == length(times)) {
       return(NULL)
     }
     
@@ -75,7 +75,7 @@ list.files(paste0(data_root,'tiles/')) %>%
     as.list(times) %>% 
       walk(\(time){
         
-        if (file.exists(paste0(data_root,out_dir,'def_',time,tile))) {
+        if (file.exists(paste0(data_root,out_dir,time,tile))) {
           return(NULL)
         } else {
           # Make a log
