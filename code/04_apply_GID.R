@@ -14,7 +14,7 @@ using <- function(...) {
   }
 }
 
-using('purrr','tidyr','dplyr','furrr','sf','exactextractr','terra') 
+using('tidyr','dplyr','purrr','furrr','sf','exactextractr','terra') 
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
@@ -52,10 +52,10 @@ if (!file.exists(paste0(data_root,out_dir))) {
 # Prepare inputs
 #-------------------------------------------------------------------------------
 # Set parrellelization plan
-plan(multisession, workers = 20)
+plan(multisession, workers = 30)
 #tic()
 list.files(paste0(data_root,'tiles/')) %>% 
-  future_walk(\(tile){ # tile=list.files('../data/tiles')[[100]]
+  future_walk(\(tile){ # tile=list.files('../data/tiles')[[1]]
     
     if ( length(list.files(paste0(data_root,out_dir), 
                            pattern = paste0('.*',tile)))
@@ -64,7 +64,7 @@ list.files(paste0(data_root,'tiles/')) %>%
     }
     
     # Load the fine template for this tile
-    tile_rast <- rast(paste0(data_root,'tiles/'),tile)
+    tile_rast <- rast(paste0(data_root,'tiles/',tile))
     
     # Collect the centroids of each grid cell in the tile 
     fine_centroids <- st_as_sf(as.points(tile_rast))
@@ -84,13 +84,13 @@ list.files(paste0(data_root,'tiles/')) %>%
                 append = TRUE)
         }
         
-        ds_coarse_tile <- rast(paste0(data_root,out_dir,'tile_templates/ds_coarse_',time,tile))
-        template_fine_tile <- rast(paste0(data_root,out_dir,'tile_templates/template_fine_',time,tile))
-        template_coarse_tile <- rast(paste0(data_root,out_dir,'tile_templates/template_coarse_',time,tile))
+        ds_coarse_tile <- rast(paste0(data_root,'tile_templates/ds_coarse_',time,tile))
+        template_fine_tile <- rast(paste0(data_root,'tile_templates/template_fine_',time,tile))
+        template_coarse_tile <- rast(paste0(data_root,'tile_templates/template_coarse_',time,tile))
         
         # Nugget distance, in meters - points within this distance are not used in regression
         # Flint and Flint suggest using the resolution of the layer to be downscaled (here, 4-km)
-        nug_dist <- round(max(res(template_coarse_tile)))+1
+        nug_dist <- round(max(res(template_coarse_tile)))+10
         
         # Coarse extract for all variables, within buffer distance, returns list for each buffer
         coarse_dat <- exact_extract(ds_coarse_tile, fine_buffers, include_xy = T)

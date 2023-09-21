@@ -14,20 +14,20 @@ using <- function(...) {
   }
 }
 
-using('purrr','tidyr','dplyr','furrr','sf','exactextractr','terra') 
+using('purrr','sf','exactextractr','terra','tidyverse','furrr') 
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
 # Set some parameters, to make it easier to apply to different projects
 # ------------------------------------------------------------------------------
 # The climate variable short names as they appear in filenames
-clim_vars <- c('aet','def','tmax','tmin')
+clim_vars <- c('def')
 
 # A 'suffix' or naming convention common to all files to be downscaled
 coarse_name <- 'terra'
 
 # Time periods
-times <- c('1961-1990','2C_1985-2015') #,,paste0('2C_',1985:2015)
+times <- c('1961-1990') #,,paste0('2C_',1985:2015)
 
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_1981-2010.tif'
@@ -35,14 +35,11 @@ templ_name <- '_topo_1981-2010.tif'
 # Buffer distance for geospatial regression, in meters
 buff_dist <- 50000
 
-# Create a data directory
-data_root <- '../data/'
-
 # Create an output directory
-out_dir <- 'gids_output/'
+out_dir <- 'gids_output_nug'
 
-if (!file.exists(paste0(data_root,out_dir))) {
-  dir.create(paste0(data_root,out_dir))
+if (!file.exists(paste0('../data/',out_dir))) {
+  dir.create(paste0('../data/',out_dir))
 }
 
 
@@ -52,19 +49,19 @@ if (!file.exists(paste0(data_root,out_dir))) {
 # Prepare inputs
 #-------------------------------------------------------------------------------
 # Set parrellelization plan
-plan(multisession, workers = 20)
+plan(multisession, workers = 5)
 #tic()
-list.files(paste0(data_root,'tiles/')) %>% 
+list.files('../data/tiles') %>% 
   future_walk(\(tile){ # tile=list.files('../data/tiles')[[100]]
     
-    if ( length(list.files(paste0(data_root,out_dir), 
+    if ( length(list.files('../data/gids_output_nug/', 
                            pattern = paste0('.*',tile)))
          == length(clim_vars)*length(times)) {
       return(NULL)
     }
     
     # Load the fine template for this tile
-    tile_rast <- rast(paste0(data_root,'tiles/'),tile)
+    tile_rast <- rast(paste0('../data/tiles/',tile))
     
     # Collect the centroids of each grid cell in the tile 
     fine_centroids <- st_as_sf(as.points(tile_rast))
@@ -75,7 +72,7 @@ list.files(paste0(data_root,'tiles/')) %>%
     as.list(times) %>% 
       walk(\(time){
         
-        if (file.exists(paste0(data_root,out_dir,'def_',time,tile))) {
+        if (file.exists(paste0('../data/gids_output_nug/def_',time,tile))) {
           return(NULL)
         } else {
           # Make a log
@@ -84,9 +81,9 @@ list.files(paste0(data_root,'tiles/')) %>%
                 append = TRUE)
         }
         
-        ds_coarse_tile <- rast(paste0(data_root,out_dir,'tile_templates/ds_coarse_',time,tile))
-        template_fine_tile <- rast(paste0(data_root,out_dir,'tile_templates/template_fine_',time,tile))
-        template_coarse_tile <- rast(paste0(data_root,out_dir,'tile_templates/template_coarse_',time,tile))
+        ds_coarse_tile <- rast(paste0('../data/tile_templates/ds_coarse_',time,tile))
+        template_fine_tile <- rast(paste0('../data/tile_templates/template_fine_',time,tile))
+        template_coarse_tile <- rast(paste0('../data/tile_templates/template_coarse_',time,tile))
         
         # Nugget distance, in meters - points within this distance are not used in regression
         # Flint and Flint suggest using the resolution of the layer to be downscaled (here, 4-km)
@@ -127,7 +124,7 @@ list.files(paste0(data_root,'tiles/')) %>%
           # Map (apply), returning dataframe, over each climate variable 
           #focal_result_df <- data.frame('pt_ID' = numeric(0), 'var' = character(0), 'gids' = numeric(0))
           
-          as.list(clim_vars) %>%  # REPLACE HERE ALL THE YEARS... 
+          as.list(clim_vars) |> # REPLACE HERE ALL THE YEARS... 
             map_dfr(\(clim_var){
               
               # Fine-grid information from fine-grid focal location
@@ -175,8 +172,8 @@ list.files(paste0(data_root,'tiles/')) %>%
                                 'var' = clim_var,
                                 'gids' = Z))
         })
-      })
-        
+        })
+
         # Pivot the result to wide, for easy write-out as raster stack
         result_df_wide <- focal_result_df |> 
           pivot_wider(names_from = var, values_from = gids) |> 
@@ -188,16 +185,15 @@ list.files(paste0(data_root,'tiles/')) %>%
           rast(type = 'xyz', crs = tile_rast)
         
         writeRaster(out_rast, 
-                    paste0(data_root,out_dir,time,tile),
+                    paste0('../data/gids_output_nug/',clim_vars,'_',time,tile),
                     overwrite = T)
         
         rm(focal_result_df, result_df_wide, out_rast)
         gc()
-    })
+      })
   },.progress = T)
 
     
-plan(sequential)
 
 
 
@@ -205,7 +201,7 @@ plan(sequential)
 #toc()
 
 # End parallelization
-
+plan(sequential)
 
 
 library(profvis)
