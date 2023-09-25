@@ -17,7 +17,7 @@ as.list(times) %>%
       map(., rast) %>% 
       sprc() %>% 
       merge() %>% 
-      writeRaster(paste0('../data/',out_dir,'/','topoterra-allvars_',time,'.tif'))
+      writeRaster(paste0('../data/',out_dir,'/','topoterra_',time,'.tif'))
   })
 
    

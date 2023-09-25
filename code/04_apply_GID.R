@@ -14,7 +14,7 @@ using <- function(...) {
   }
 }
 
-using('tidyr','dplyr','purrr','furrr','sf','exactextractr','terra','future.callr') 
+using('tidyr','dplyr','purrr','furrr','sf','exactextractr','terra','future.callr','data.table') 
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
@@ -27,7 +27,7 @@ clim_vars <- c('aet','def','tmax','tmin')
 coarse_name <- 'terra'
 
 # Time periods
-times <- c('1961-1990','2C_1985-2015') #,,paste0('2C_',1985:2015)
+times <- c('1961-1990','2C_1985-2015') #,,'2C_1985-2015',paste0('2C_',1985:2015)
 
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_1981-2010.tif'
@@ -46,13 +46,29 @@ if (!file.exists(paste0(data_root,out_dir))) {
 }
 
 
+# Find incomplete tiles
+done <- times %>% 
+  map(\(time){
+    list.files(paste0(data_root,out_dir), pattern = paste0(time,'_.*'))
+  }) %>% 
+  list_c()
+
+to_do <- times %>% 
+  map(\(time){
+    paste0(time,list.files(paste0(data_root,'tiles/')))
+  }) %>% 
+  list_c()
+
+not_done <- sub('.*_','_',to_do[!to_do %in% done])
+
+
 # ------------------------------------------------------------------------------
 # Run process over each tile
 #-------------------------------------------------------------------------------
 # Prepare inputs
 #-------------------------------------------------------------------------------
 # Set parrellelization plan
-plan(callr, workers = 50)
+plan(callr, workers = 20)
 list.files(paste0(data_root,'tiles/')) %>% 
   future_walk(\(tile){ # tile=list.files('../data/tiles')[[1]]
     
@@ -106,9 +122,6 @@ list.files(paste0(data_root,'tiles/')) %>%
         # Clean up memory
         rm(ds_coarse_tile, template_fine_tile, template_coarse_tile, fine_buffers, fine_centroids)
         #gc()
-        
-        # Preallocate dataframe
-        result_df <- data.frame('pt_ID' = numeric(0), 'var' = character(0), 'gids' = numeric(0))
         
         # --------------------------------------------------------------------------
         # Iterate over each point of `tile`
@@ -197,8 +210,5 @@ list.files(paste0(data_root,'tiles/')) %>%
         #gc()
       })
   },.progress = T)
-    
+
 plan(sequential)
-
-
-

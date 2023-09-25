@@ -13,7 +13,7 @@ clim_vars <- c('aet','def','tmax','tmin')
 coarse_name <- 'terra'
 
 # Time periods
-times <- c('1961-1990','2C_1985-2015') #,,paste0('2C_',1985:2015)
+times <- c(paste0('2C_',1985:2015)) #,,paste0('2C_',1985:2015)'1961-1990','2C_1985-2015'
 
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_1981-2010.tif'
@@ -21,17 +21,22 @@ templ_name <- '_topo_1981-2010.tif'
 # Buffer distance for geospatial regression, in meters
 buff_dist <- 50000
 
+# Directory for tiles, relative to locatoin of this script
+tile_dir <- '../data/tiles/'
+
+# Directory for tile_templates (cropped rasters for each tile)
+tile_templ_dir <- 'I:/tyler_data_store/tile_templates/'
 
 # Make tiles -------------------------------------------------------------------
-# Build information about fine-scale coordinates for this tile
+#Build information about fine-scale coordinates for this tile
 # Climate variable for this step is arbitrary - spatial info identical for all
-template_general <- rast(paste0('../data/cogs/',clim_vars[1],templ_name))
-
-dir.create('../data/tiles')
-
-makeTiles(template_general, ceiling(dim(template_general)/200)[1:2],
-          filename = paste0('../data/tiles/_.tif'),
-          extend = TRUE, na.rm = TRUE, overwrite = TRUE)
+# template_general <- rast(paste0('../data/cogs/',clim_vars[1],templ_name))
+# 
+# dir.create(tile_dir)
+# 
+# makeTiles(template_general, ceiling(dim(template_general)/200)[1:2],
+#           filename = paste0('../data/tiles_new/','_.tif'),
+#           extend = TRUE, na.rm = TRUE, overwrite = TRUE)
 #-------------------------------------------------------------------------------
 
 
@@ -40,14 +45,21 @@ makeTiles(template_general, ceiling(dim(template_general)/200)[1:2],
 #-------------------------------------------------------------------------------
 
 # Create a output directory for these
-if (!file.exists('../data/tile_templates')) {
-  dir.create('../data/tile_templates')
+if (!file.exists(tile_templ_dir)) {
+  dir.create(tile_templ_dir)
 }
 
 as.list(times) %>% 
   walk(\(time){
     
-    print(paste0('Running:',time))
+    if( file.exists(
+      paste0(tile_templ_dir,'ds_coarse_',
+             time,
+             list.files(tile_dir)[[length(list.files(tile_dir))]]))){
+      return(NULL)
+    } else {
+      print(paste0('Running:',time))
+    }
     
     # Stack of coarse files (all variables) for this time --
     ds_coarse <- rast(paste0('../data/cogs/',clim_vars,'_',coarse_name,'_',time,'.tif'))
@@ -63,14 +75,20 @@ as.list(times) %>%
     template_coarse <- resample(template_fine, ds_coarse, 'bilinear', threads = T)
     
     
-    list.files('../data/tiles') %>% 
-      walk(\(tile){ # tile=list.files('../data/tiles')[[100]]
+    list.files(tile_dir) %>% 
+      walk(\(tile){ # tile=list.files(tile_dir)[[1]]
         
-        # Progress message
-        print(paste0('Running:',tile))
+        if( file.exists(
+          paste0(tile_templ_dir,'ds_coarse_',
+                 time,
+                 tile))){
+          return(NULL)
+        } else {
+          print(paste0('Running:',time,tile))
+        }
         
         # Load the tile
-        tile_rast <- rast(paste0('../data/tiles/',tile))
+        tile_rast <- rast(paste0(tile_dir,tile))
         
         # Turn the extent of the raster into a spatial vector
         tile_border <- ext(tile_rast)
@@ -86,11 +104,11 @@ as.list(times) %>%
         
         # Write them out
         writeRaster(ds_coarse_tile, 
-                    paste0('../data/tile_templates/ds_coarse_',time,tile))
+                    paste0(tile_templ_dir,'ds_coarse_',time,tile))
         writeRaster(template_fine_tile, 
-                    paste0('../data/tile_templates/template_fine_',time,tile))
+                    paste0(tile_templ_dir,'template_fine_',time,tile))
         writeRaster(template_coarse_tile, 
-                    paste0('../data/tile_templates/template_coarse_',time,tile))
+                    paste0(tile_templ_dir,'template_coarse_',time,tile))
         
         rm(tile_rast, tile_border, ds_coarse_tile, template_fine_tile, template_coarse_tile)
         gc()
