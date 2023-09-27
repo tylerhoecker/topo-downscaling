@@ -27,7 +27,7 @@ clim_vars <- c('aet','def','tmax','tmin')
 coarse_name <- 'terra'
 
 # Time periods
-times <- c('1961-1990','2C_1985-2015') #,,'2C_1985-2015',paste0('2C_',1985:2015)
+times <- paste0('2C_',1985:2015) #c('1961-1990','2C_1985-2015') 
 
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_1981-2010.tif'
@@ -68,8 +68,8 @@ not_done <- sub('.*_','_',to_do[!to_do %in% done])
 # Prepare inputs
 #-------------------------------------------------------------------------------
 # Set parrellelization plan
-plan(callr, workers = 20)
-list.files(paste0(data_root,'tiles/')) %>% 
+plan(callr, workers = 30)
+not_done %>% 
   future_walk(\(tile){ # tile=list.files('../data/tiles')[[1]]
     
     if ( length(list.files(paste0(data_root,out_dir), 
@@ -102,9 +102,15 @@ list.files(paste0(data_root,'tiles/')) %>%
                 append = TRUE)
         }
         
-        ds_coarse_tile <- rast(paste0(data_root,'tile_templates/ds_coarse_',time,tile))
-        template_fine_tile <- rast(paste0(data_root,'tile_templates/template_fine_',time,tile))
-        template_coarse_tile <- rast(paste0(data_root,'tile_templates/template_coarse_',time,tile))
+        # Skip tiles that have not been made yet
+        if( file.exists(paste0('I:/tyler_data_store/tile_templates/ds_coarse_',time,tile))
+            ){
+          ds_coarse_tile <- rast(paste0('I:/tyler_data_store/tile_templates/ds_coarse_',time,tile))
+          template_fine_tile <- rast(paste0('I:/tyler_data_store/tile_templates/template_fine_',time,tile))
+          template_coarse_tile <- rast(paste0('I:/tyler_data_store/tile_templates/template_coarse_',time,tile))
+        } else {
+          return(NULL)
+        }
         
         # Nugget distance, in meters - points within this distance are not used in regression
         # Flint and Flint suggest using the resolution of the layer to be downscaled (here, 4-km)
@@ -198,6 +204,10 @@ list.files(paste0(data_root,'tiles/')) %>%
           select(-pt_ID)
         
         # Create downscaled raster
+        # if ( legnth(unique(fine_dat[,'x'])) == 1 | legnth(unique(fine_dat[,'y'])) == 1 ){
+        #  out_rast <- rast(rep(paste0(data_root,'tiles/',tile),4))
+        #  out_rast[,,1] <- c(result_df_wide[,clim_vars[1]])$aet
+        #}
         out_rast <-  fine_dat[,c('x','y')] |> 
           cbind(result_df_wide) |> 
           rast(type = 'xyz', crs = crs_out)
