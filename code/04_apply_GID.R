@@ -26,7 +26,11 @@ clim_vars <- c('aet','def','tmax','tmin')
 coarse_name <- 'terra'
 
 # Time periods
+<<<<<<< HEAD
 times <- c('1961-1990','2C_1985-2015') #paste0('2C_',1985:2015) #c('1961-1990','2C_1985-2015') 
+=======
+times <- paste0('2C_',1985:2015) #c('1961-1990','2C_1985-2015') 
+>>>>>>> 654c51b0f514765edfc27088e8d5550a8ee8590a
 
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_1981-2010.tif'
@@ -69,10 +73,16 @@ not_done <- unique(sub('.*_','_',to_do[!to_do %in% done]))
 # Prepare inputs
 #-------------------------------------------------------------------------------
 # Set parrellelization plan
+<<<<<<< HEAD
 availableCores()
 plan(multicore, workers = 45)
 times %>% 
   future_walk(\(tile){ # tile=not_done[[1]]
+=======
+plan(callr, workers = 30)
+not_done %>% 
+  future_walk(\(tile){ # tile=list.files('../data/tiles')[[1]]
+>>>>>>> 654c51b0f514765edfc27088e8d5550a8ee8590a
     
     if ( length(list.files(paste0(data_root,out_dir), 
                            pattern = paste0('.*',tile)))
@@ -105,10 +115,18 @@ times %>%
         }
         
         # Skip tiles that have not been made yet
+<<<<<<< HEAD
         if( file.exists(paste0(tile_templ_dir,'ds_coarse_',time,tile)) ){
           ds_coarse_tile <- rast(paste0(tile_templ_dir,'ds_coarse_',time,tile))
           template_fine_tile <- rast(paste0(tile_templ_dir,'template_fine_',time,tile))
           template_coarse_tile <- rast(paste0(tile_templ_dir,'template_coarse_',time,tile))
+=======
+        if( file.exists(paste0('I:/tyler_data_store/tile_templates/ds_coarse_',time,tile))
+            ){
+          ds_coarse_tile <- rast(paste0('I:/tyler_data_store/tile_templates/ds_coarse_',time,tile))
+          template_fine_tile <- rast(paste0('I:/tyler_data_store/tile_templates/template_fine_',time,tile))
+          template_coarse_tile <- rast(paste0('I:/tyler_data_store/tile_templates/template_coarse_',time,tile))
+>>>>>>> 654c51b0f514765edfc27088e8d5550a8ee8590a
         } else {
           return(NULL)
         }
@@ -207,6 +225,7 @@ times %>%
           select(-pt_ID)
         
         # Create downscaled raster
+<<<<<<< HEAD
         if ( length(unique(fine_dat[,'x'])) == 1 | length(unique(fine_dat[,'y'])) == 1 ){
          tile_rast <- rast(rep(paste0(data_root,'tiles/',tile),4))
          out_rast <- setValues(tile_rast, result_df_wide) 
@@ -216,6 +235,15 @@ times %>%
             cbind(result_df_wide) |> 
             rast(type = 'xyz', crs = crs_out)
         }
+=======
+        # if ( legnth(unique(fine_dat[,'x'])) == 1 | legnth(unique(fine_dat[,'y'])) == 1 ){
+        #  out_rast <- rast(rep(paste0(data_root,'tiles/',tile),4))
+        #  out_rast[,,1] <- c(result_df_wide[,clim_vars[1]])$aet
+        #}
+        out_rast <-  fine_dat[,c('x','y')] |> 
+          cbind(result_df_wide) |> 
+          rast(type = 'xyz', crs = crs_out)
+>>>>>>> 654c51b0f514765edfc27088e8d5550a8ee8590a
         
         writeRaster(out_rast, 
                     paste0(data_root,out_dir,time,tile),
