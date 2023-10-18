@@ -4,22 +4,21 @@
 # ------------------------------------------------------------------------------
 # Import  packages
 # ------------------------------------------------------------------------------
-using <- function(...) {
-  libs <- unlist(list(...))
-  req <- unlist(lapply(libs,require,character.only=TRUE))
-  need <- libs[req==FALSE]
-  if(length(need)>0){ 
-    install.packages(need)
-    lapply(need,require,character.only=TRUE)
-  }
-}
-
-using('tidyr','dplyr','purrr','furrr','sf','exactextractr','terra','future.callr','data.table') 
+library(tidyr)
+library(dplyr)
+library(purrr)
+library(furrr)
+library(sf)
+library(exactextractr)
+library(terra)
+library(future.callr)
+library(data.table)
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
 # Set some parameters, to make it easier to apply to different projects
 # ------------------------------------------------------------------------------
+
 # The climate variable short names as they appear in filenames
 clim_vars <- c('aet','def','tmax','tmin')
 
@@ -27,7 +26,7 @@ clim_vars <- c('aet','def','tmax','tmin')
 coarse_name <- 'terra'
 
 # Time periods
-times <- c('1961-1990','2C_1985-2015') #,,'2C_1985-2015',paste0('2C_',1985:2015)
+times <- c('1961-1990','2C_1985-2015') #paste0('2C_',1985:2015) #c('1961-1990','2C_1985-2015') 
 
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_1981-2010.tif'
@@ -45,6 +44,8 @@ if (!file.exists(paste0(data_root,out_dir))) {
   dir.create(paste0(data_root,out_dir))
 }
 
+# Directory for tile_templates (cropped rasters for each tile)
+tile_templ_dir <- '../data/tile_templates/'
 
 # Find incomplete tiles
 done <- times %>% 
@@ -59,7 +60,7 @@ to_do <- times %>%
   }) %>% 
   list_c()
 
-not_done <- sub('.*_','_',to_do[!to_do %in% done])
+not_done <- unique(sub('.*_','_',to_do[!to_do %in% done]))
 
 
 # ------------------------------------------------------------------------------
@@ -68,9 +69,10 @@ not_done <- sub('.*_','_',to_do[!to_do %in% done])
 # Prepare inputs
 #-------------------------------------------------------------------------------
 # Set parrellelization plan
-plan(callr, workers = 20)
-list.files(paste0(data_root,'tiles/')) %>% 
-  future_walk(\(tile){ # tile=list.files('../data/tiles')[[1]]
+availableCores()
+plan(multicore, workers = 45)
+times %>% 
+  future_walk(\(tile){ # tile=not_done[[1]]
     
     if ( length(list.files(paste0(data_root,out_dir), 
                            pattern = paste0('.*',tile)))
@@ -102,9 +104,14 @@ list.files(paste0(data_root,'tiles/')) %>%
                 append = TRUE)
         }
         
-        ds_coarse_tile <- rast(paste0(data_root,'tile_templates/ds_coarse_',time,tile))
-        template_fine_tile <- rast(paste0(data_root,'tile_templates/template_fine_',time,tile))
-        template_coarse_tile <- rast(paste0(data_root,'tile_templates/template_coarse_',time,tile))
+        # Skip tiles that have not been made yet
+        if( file.exists(paste0(tile_templ_dir,'ds_coarse_',time,tile)) ){
+          ds_coarse_tile <- rast(paste0(tile_templ_dir,'ds_coarse_',time,tile))
+          template_fine_tile <- rast(paste0(tile_templ_dir,'template_fine_',time,tile))
+          template_coarse_tile <- rast(paste0(tile_templ_dir,'template_coarse_',time,tile))
+        } else {
+          return(NULL)
+        }
         
         # Nugget distance, in meters - points within this distance are not used in regression
         # Flint and Flint suggest using the resolution of the layer to be downscaled (here, 4-km)
@@ -178,6 +185,8 @@ list.files(paste0(data_root,'tiles/')) %>%
               
               # Inverse distance squared weighting (GIDS formula)
               # This formula is provided on page 5 of Flint and Flint 2012
+              # Formula was revised - distance are not squared here - to reduce circular artifacts in areas with low 
+              # variability in climate or near edges
               sum1 <- sum( (model_df$Zi + (X-model_df$Xi)*Cx + (Y-model_df$Yi)*Cy + (C-model_df$Ci)*Cc) / model_df$di)
               sum2 <- sum(1/model_df$di)
               Z = sum1/sum2 
@@ -198,16 +207,22 @@ list.files(paste0(data_root,'tiles/')) %>%
           select(-pt_ID)
         
         # Create downscaled raster
-        out_rast <-  fine_dat[,c('x','y')] |> 
-          cbind(result_df_wide) |> 
-          rast(type = 'xyz', crs = crs_out)
+        if ( length(unique(fine_dat[,'x'])) == 1 | length(unique(fine_dat[,'y'])) == 1 ){
+         tile_rast <- rast(rep(paste0(data_root,'tiles/',tile),4))
+         out_rast <- setValues(tile_rast, result_df_wide) 
+         out_rast <- out_rast*(tile_rast/tile_rast)
+        } else {
+          out_rast <-  fine_dat[,c('x','y')] |> 
+            cbind(result_df_wide) |> 
+            rast(type = 'xyz', crs = crs_out)
+        }
         
         writeRaster(out_rast, 
                     paste0(data_root,out_dir,time,tile),
                     overwrite = T)
         
         rm(focal_result_df, result_df_wide, out_rast)
-        #gc()
+        gc()
       })
   },.progress = T)
 

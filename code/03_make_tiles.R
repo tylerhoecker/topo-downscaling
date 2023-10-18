@@ -13,7 +13,7 @@ clim_vars <- c('aet','def','tmax','tmin')
 coarse_name <- 'terra'
 
 # Time periods
-times <- c(paste0('2C_',1985:2015)) #,,paste0('2C_',1985:2015)'1961-1990','2C_1985-2015'
+times <- c('1961-1990','2C_1985-2015') #,,paste0('2C_',1985:2015)'1961-1990','2C_1985-2015'
 
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_1981-2010.tif'
@@ -25,18 +25,18 @@ buff_dist <- 50000
 tile_dir <- '../data/tiles/'
 
 # Directory for tile_templates (cropped rasters for each tile)
-tile_templ_dir <- 'I:/tyler_data_store/tile_templates/'
+tile_templ_dir <- '../data/tile_templates/'
 
 # Make tiles -------------------------------------------------------------------
 #Build information about fine-scale coordinates for this tile
 # Climate variable for this step is arbitrary - spatial info identical for all
-# template_general <- rast(paste0('../data/cogs/',clim_vars[1],templ_name))
-# 
-# dir.create(tile_dir)
-# 
-# makeTiles(template_general, ceiling(dim(template_general)/200)[1:2],
-#           filename = paste0('../data/tiles_new/','_.tif'),
-#           extend = TRUE, na.rm = TRUE, overwrite = TRUE)
+template_general <- rast(paste0('../data/cogs/',clim_vars[1],templ_name))
+
+dir.create(tile_dir)
+
+makeTiles(template_general, ceiling(dim(template_general)/100)[1:2],
+          filename = paste0(tile_dir,'_.tif'),
+          extend = TRUE, na.rm = TRUE, overwrite = TRUE)
 #-------------------------------------------------------------------------------
 
 
