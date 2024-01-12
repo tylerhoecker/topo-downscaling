@@ -6,43 +6,48 @@
 # Load packages
 library(terra)
 library(purrr)
+library(furrr)
 
 clim_vars <- c('aet','def','tmax','tmin')
 
 # A 'suffix' or naming convention common to all files to be downscaled
-coarse_name <- 'terra'
+coarse_name <- 'terra_hist'
 
 # Time periods
-times <- c('1961-1990','2C_1985-2015') #,,paste0('2C_',1985:2015)'1961-1990','2C_1985-2015'
+times <- paste0(1961:1990) #c('1961-1990','2C_1985-2015') #,,paste0('2C_',1985:2015)'1961-1990','2C_1985-2015'
 
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
-templ_name <- '_topo_1981-2010.tif'
+templ_name <- '_topo_hist_1981-2010.tif'
 
 # Buffer distance for geospatial regression, in meters
 buff_dist <- 50000
 
 # Directory for tiles, relative to locatoin of this script
-tile_dir <- '../data/tiles/'
+tile_dir <- 'data/tiles/'
 
 # Directory for tile_templates (cropped rasters for each tile)
-tile_templ_dir <- '../data/tile_templates/'
+tile_templ_dir <- 'data/tile_templates/'
 
 # Make tiles -------------------------------------------------------------------
 #Build information about fine-scale coordinates for this tile
 # Climate variable for this step is arbitrary - spatial info identical for all
-template_general <- rast(paste0('../data/cogs/',clim_vars[1],templ_name))
+template_general <- rast(paste0('data/cogs/',clim_vars[1],templ_name))
 
 dir.create(tile_dir)
 
-makeTiles(template_general, ceiling(dim(template_general)/100)[1:2],
-          filename = paste0(tile_dir,'_.tif'),
-          extend = TRUE, na.rm = TRUE, overwrite = TRUE)
+# makeTiles(template_general, ceiling(dim(template_general)/100)[1:2],
+ #         filename = paste0(tile_dir,'_.tif'),
+ #         extend = TRUE, na.rm = TRUE, overwrite = TRUE)
 #-------------------------------------------------------------------------------
 
 
 #-------------------------------------------------------------------------------
 # Crop data layers to area around each tile and save...
 #-------------------------------------------------------------------------------
+library(future)
+library(furrr)
+availableCores()
+plan(multisession, workers = 10)
 
 # Create a output directory for these
 if (!file.exists(tile_templ_dir)) {
@@ -50,7 +55,7 @@ if (!file.exists(tile_templ_dir)) {
 }
 
 as.list(times) %>% 
-  walk(\(time){
+  future_walk(\(time){
     
     if( file.exists(
       paste0(tile_templ_dir,'ds_coarse_',
@@ -62,21 +67,20 @@ as.list(times) %>%
     }
     
     # Stack of coarse files (all variables) for this time --
-    ds_coarse <- rast(paste0('../data/cogs/',clim_vars,'_',coarse_name,'_',time,'.tif'))
+    ds_coarse <- rast(paste0('data/cogs/',clim_vars,'_',coarse_name,'_',time,'.tif'))
     names(ds_coarse) <- clim_vars
     ds_coarse <- round(ds_coarse, 1)
     
     # Fine template 
-    template_fine <- rast(paste0('../data/cogs/',clim_vars,templ_name))
+    template_fine <- rast(paste0('data/cogs/',clim_vars,templ_name))
     names(template_fine) <- clim_vars
     template_fine <- round(template_fine, 1)
     
     # Resample, as a form of aggregation, the fine data to coarse grid, so they can be regressed
     template_coarse <- resample(template_fine, ds_coarse, 'bilinear', threads = T)
     
-    
     list.files(tile_dir) %>% 
-      walk(\(tile){ # tile=list.files(tile_dir)[[1]]
+      walk(\(tile){ # tile=list.files(tile_dir)[[5101]]
         
         if( file.exists(
           paste0(tile_templ_dir,'ds_coarse_',

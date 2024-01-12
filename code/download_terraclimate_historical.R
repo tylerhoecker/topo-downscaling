@@ -15,7 +15,7 @@ years <- 1985:2015
 thredds_2C_base <- paste0('http://thredds.northwestknowledge.net:8080/thredds/fileServer/TERRACLIMATE_ALL/data_plus2C/TerraClimate_2c')
 
 years <- 1960:2022
-thredds_hist_base <- "http://thredds.northwestknowledge.net:8080/thredds/catalog/TERRACLIMATE_ALL/data/TerraClimate"
+thredds_hist_base <- "http://thredds.northwestknowledge.net:8080/thredds/fileServer/TERRACLIMATE_ALL/data/TerraClimate"
 
 # Build urls based on the base url and variables
 urls <- expand.grid(thredds_hist_base, variables, years) |> 
@@ -28,7 +28,7 @@ urls |>
   walk(\(url){
     
     # Create a filename to save the netcdf to
-    out_file <- paste0('../data/climate_inputs/',sub('.*/data_plus2C/','', url))
+    out_file <- paste0('data/climate_inputs/',sub('.*/data/','', url))
     
     # Download and save
     download.file(url$combo, out_file, mode = 'wb')
@@ -39,8 +39,8 @@ urls |>
     # Summarize the months to annual
     
     # Extact variable name and year from filename
-    variable <- sub('_[0-9]{4}.nc','', sub('.*/TerraClimate_2c_','', url))
-    year <- sub('.nc','', sub('.*/TerraClimate_2c_[a-z]{3,4}_','', url))
+    variable <- sub('_[0-9]{4}.nc','', sub('.*/TerraClimate_','', url))
+    year <- sub('.nc','', sub('.*/TerraClimate_[a-z]{3,4}_','', url))
     
     if (variable %in% c('def','aet')) {
       summ_rast <- sum(nc_as_rast)
@@ -49,11 +49,15 @@ urls |>
     }
     
     # Save summarized annual as a tiff
-    writeRaster(summ_rast, paste0('../data/climate_inputs/',variable,'_terra_2C_',year,'.tif'))
+    writeRaster(summ_rast, paste0('data/climate_inputs/',variable,'_terra_hist_',year,'.tif'))
     
     # Delete the netCDF file
     unlink(out_file)
   })
+
+
+
+
 
 # For 30-yr normals 2C data
 thredds_2C_base <- paste0('http://thredds.northwestknowledge.net:8080/thredds/fileServer/TERRACLIMATE_ALL/summaries/TerraClimate2C')

@@ -11,7 +11,7 @@ library(furrr)
 library(sf)
 library(exactextractr)
 library(terra)
-library(future.callr)
+# library(future.callr)
 library(data.table)
 # ------------------------------------------------------------------------------
 
@@ -23,10 +23,10 @@ library(data.table)
 clim_vars <- c('aet','def','tmax','tmin')
 
 # A 'suffix' or naming convention common to all files to be downscaled
-coarse_name <- 'terra'
+coarse_name <- 'terra_hist'
 
 # Time periods
-times <- c('1961-1990','2C_1985-2015') #paste0('2C_',1985:2015) #c('1961-1990','2C_1985-2015') 
+times <- c(1961:1990) #paste0('2C_',1985:2015) #c('1961-1990','2C_1985-2015') 
 
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_1981-2010.tif'
@@ -35,7 +35,7 @@ templ_name <- '_topo_1981-2010.tif'
 buff_dist <- 50000
 
 # Create a data directory
-data_root <- '../data/'
+data_root <- 'data/'
 
 # Create an output directory
 out_dir <- 'gids_output/'
@@ -45,7 +45,7 @@ if (!file.exists(paste0(data_root,out_dir))) {
 }
 
 # Directory for tile_templates (cropped rasters for each tile)
-tile_templ_dir <- '../data/tile_templates/'
+tile_templ_dir <- 'data/tile_templates/'
 
 # Find incomplete tiles
 done <- times %>% 
@@ -70,7 +70,7 @@ not_done <- unique(sub('.*_','_',to_do[!to_do %in% done]))
 #-------------------------------------------------------------------------------
 # Set parrellelization plan
 availableCores()
-plan(callr, workers = 45)
+plan(multicore, workers = 45)
 not_done %>% 
   future_walk(\(tile){ # tile=not_done[[1]]
     
