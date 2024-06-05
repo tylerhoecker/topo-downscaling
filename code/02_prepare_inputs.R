@@ -56,12 +56,10 @@ files |>
     dataset <- sub('_[0-9]+.*','', sub('[a-z]+_','',file))
     
     if(dataset == 'topo_hist'){
-      grid_crop <- mask(grid_original, lf_water_mask)
+      grid_final <- mask(grid_original, lf_water_mask)
     }else{
-      grid_crop <- crop(grid_original, grid_topo)
+      grid_final <- crop(grid_original, grid_topo)
     }
-
-    grid_final <- project(grid_crop, "EPSG:32611")
 
     # Write it out
     writeRaster(grid_final, paste0('temp_',file),

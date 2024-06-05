@@ -20,13 +20,13 @@ library(data.table)
 # ------------------------------------------------------------------------------
 
 # The climate variable short names as they appear in filenames
-clim_vars <- c('aet','def','tmax','tmin')
+clim_vars <- c("tmax","tmin") #c('aet','def','tmax','tmin')
 
 # A 'suffix' or naming convention common to all files to be downscaled
-coarse_name <- 'terra_hist'
+coarse_name <- 'terra_2C'
 
 # Time periods
-times <- c(1961:1990) #paste0('2C_',1985:2015) #c('1961-1990','2C_1985-2015') 
+times <- c(1985:2015) #paste0('2C_',1985:2015) #c('1961-1990','2C_1985-2015') 
 
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_1981-2010.tif'
@@ -87,7 +87,7 @@ not_done %>%
     
     # Collect the centroids of each grid cell in the tile 
     fine_centroids <- st_as_sf(as.points(tile_rast))
-    rm(tile_rast)
+    # Reproject these points to UTM, then cbind()
     
     # Buffers for all fine points, as a spatpolygon
     fine_buffers <- st_buffer(fine_centroids, dist = buff_dist)

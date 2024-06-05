@@ -8,13 +8,13 @@ library(terra)
 library(purrr)
 library(furrr)
 
-clim_vars <- c('aet','def','tmax','tmin')
+clim_vars <- c("aet","def","tmax","tmin")#c('aet','def','tmax','tmin')
 
 # A 'suffix' or naming convention common to all files to be downscaled
-coarse_name <- 'terra_hist'
+coarse_name <- 'terra_2C'
 
 # Time periods
-times <- paste0(1961:1990) #c('1961-1990','2C_1985-2015') #,,paste0('2C_',1985:2015)'1961-1990','2C_1985-2015'
+times <- c(1986:1991) #paste0(1961:1990) #c('1961-1990','2C_1985-2015') #,,paste0('2C_',1985:2015)'1961-1990','2C_1985-2015'
 
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_hist_1981-2010.tif'
@@ -33,34 +33,55 @@ tile_templ_dir <- 'data/tile_templates/'
 # Climate variable for this step is arbitrary - spatial info identical for all
 template_general <- rast(paste0('data/cogs/',clim_vars[1],templ_name))
 
+# Reduce area for testing - crop to PNW Ecoregions
+pnw_ecoregions <- sf::st_read("data/pnw_ecoregions/pnw_ecoregions.gpkg")
+template_general <- crop(template_general, pnw_ecoregions)
+template_general <- mask(template_general, pnw_ecoregions)
+
 dir.create(tile_dir)
 
-# makeTiles(template_general, ceiling(dim(template_general)/100)[1:2],
- #         filename = paste0(tile_dir,'_.tif'),
- #         extend = TRUE, na.rm = TRUE, overwrite = TRUE)
+makeTiles(template_general, ceiling(dim(template_general)/100)[1:2],
+         filename = paste0(tile_dir,'_.tif'),
+         extend = TRUE, na.rm = TRUE, overwrite = TRUE)
 #-------------------------------------------------------------------------------
 
+
+# write Raster function
+writeCOG <- function(x, filename){
+  writeRaster(x, 
+              filename, 
+              datatype = "INT2S",
+              gdal = c("PROJECTION=EPSG:4326",
+                       "TILED=YES",
+                       "BLOCKXSIZE=128",
+                       "BLOCKYSIZE=128",
+                       "OVERVIEW-RESAMPLING=NEAREST",
+                       "COMPRESS=DEFLATE"),
+              overwrite = TRUE)
+}
 
 #-------------------------------------------------------------------------------
 # Crop data layers to area around each tile and save...
 #-------------------------------------------------------------------------------
-library(future)
-library(furrr)
-availableCores()
-plan(multisession, workers = 10)
-
 # Create a output directory for these
 if (!file.exists(tile_templ_dir)) {
   dir.create(tile_templ_dir)
 }
 
+plan(multicore, workers = 10)
+
 as.list(times) %>% 
   future_walk(\(time){
     
-    if( file.exists(
-      paste0(tile_templ_dir,'ds_coarse_',
-             time,
-             list.files(tile_dir)[[length(list.files(tile_dir))]]))){
+    n_complete <- length(
+      list.files(
+        tile_templ_dir, pattern = paste0('ds_coarse_', time, "_.*tif")
+      )
+    )
+
+    n_tiles <- length(list.files(tile_dir))
+
+    if( n_complete == n_tiles ){
       return(NULL)
     } else {
       print(paste0('Running:',time))
@@ -80,16 +101,26 @@ as.list(times) %>%
     template_coarse <- resample(template_fine, ds_coarse, 'bilinear', threads = T)
     
     list.files(tile_dir) %>% 
+
       walk(\(tile){ # tile=list.files(tile_dir)[[5101]]
-        
-        if( file.exists(
+      
+      ds_done <- file.exists(
           paste0(tile_templ_dir,'ds_coarse_',
                  time,
-                 tile))){
+                 tile)
+      )
+
+      fine_done <- file.exists(
+          paste0(tile_templ_dir,'template_fine_',
+                 time,
+                 tile)
+      )
+
+      if( ds_done & fine_done ){
           return(NULL)
         } else {
           print(paste0('Running:',time,tile))
-        }
+      }
         
         # Load the tile
         tile_rast <- rast(paste0(tile_dir,tile))
@@ -107,12 +138,18 @@ as.list(times) %>%
         template_coarse_tile <- crop(template_coarse, tile_border)
         
         # Write them out
-        writeRaster(ds_coarse_tile, 
-                    paste0(tile_templ_dir,'ds_coarse_',time,tile))
-        writeRaster(template_fine_tile, 
-                    paste0(tile_templ_dir,'template_fine_',time,tile))
-        writeRaster(template_coarse_tile, 
-                    paste0(tile_templ_dir,'template_coarse_',time,tile))
+        writeCOG(
+          ds_coarse_tile, 
+          paste0(tile_templ_dir,'ds_coarse_',time,tile)
+        )
+        writeCOG(
+          template_fine_tile, 
+          paste0(tile_templ_dir,'template_fine_',time,tile)
+        )
+        writeCOG(
+          template_coarse_tile, 
+          paste0(tile_templ_dir,'template_coarse_',time,tile)
+        )
         
         rm(tile_rast, tile_border, ds_coarse_tile, template_fine_tile, template_coarse_tile)
         gc()

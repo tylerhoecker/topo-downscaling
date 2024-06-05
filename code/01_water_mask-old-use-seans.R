@@ -4,7 +4,7 @@
 
 library(terra)
 
-lf_2020 <- rast('../data/LC20_BPS_220.tif')
+lf_2020 <- rast('data/LC20_BPS_220.tif')
 
 # Aggregate to a coarser resolution, roughly the same as TopoFire (~270 but actually 220 when reprojected to UTM)
 # But should be something like: 220/30 = 7.3. This will get it close, and 
@@ -14,7 +14,7 @@ lf_2020_coarse <- terra::aggregate(lf_2020, fact = 7, fun = 'modal')
 # Skip these steps to do this for entire Landfire coverage 
 #-------------------------------------------------------------------------------
 # Start by cropping down the LF rast, which is larger than topoclimate data and our study area
-topo_area <- rast(rast(file.path('../data/climate_inputs/def_topo_1981-2010.tif')))
+topo_area <- rast(rast(file.path('data/climate_inputs/def_topo_hist_1981-2010.tif')))
 # Just use the extent to save time
 topo_extent <- ext(topo_area)
 # Transform to same as Landfire
