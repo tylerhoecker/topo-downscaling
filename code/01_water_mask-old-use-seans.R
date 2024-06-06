@@ -28,14 +28,15 @@ lf_rast_bin <- classify(lf_rast_west, cbind(c(-9999,11),NA))
 lf_rast_bin <- classify(lf_rast_bin, cbind(c(0:9999),1))
 
 # ------------------------------------------------------------------------------
-lf_water_mask <- project(lf_rast_bin, "EPSG:32611")
-writeRaster(lf_water_mask, 'lf_water_mask_32611.tiff', overwrite = T)
+lf_water_mask <- project(lf_rast_bin, "EPSG:32611", "near")
+writeRaster(lf_water_mask, 'data/lf_water_mask_32611.tiff', overwrite = T)
 
 # Or do re-projection to UTM Zone 11 EPSG:3741 in QGIS because its WAY faster!
-writeRaster(lf_rast_bin, 'lf_water_mask_5070.tiff', overwrite = T)
+writeRaster(lf_rast_bin, 'data/lf_water_mask_5070.tiff', overwrite = T)
 # ------------------------------------------------------------------------------
 
-
+lf_water_mask <- project(lf_rast_bin, "EPSG:4326", "near")
+writeRaster(lf_water_mask, 'data/lf_water_mask_4326.tiff', overwrite = T)
 
 
 # Write out
