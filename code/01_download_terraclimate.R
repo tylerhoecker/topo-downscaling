@@ -14,8 +14,8 @@ variables <- c("aet","def","tmax","tmin") #c('def','aet','tmin','tmax')
 years <- 1985:2015 # 2C applies 1985-2015
 thredds_base <- paste0('http://thredds.northwestknowledge.net:8080/thredds/fileServer/TERRACLIMATE_ALL/data_plus2C/TerraClimate_2c')
 
-#years <- 1960:2022
-#thredds_base <- "http://thredds.northwestknowledge.net:8080/thredds/fileServer/TERRACLIMATE_ALL/data/TerraClimate"
+# years <- 1960:2022
+# thredds_base <- "http://thredds.northwestknowledge.net:8080/thredds/fileServer/TERRACLIMATE_ALL/data/TerraClimate"
 
 # Build urls based on the base url and variables
 urls <- expand.grid(thredds_base, variables, years) |> 
@@ -59,7 +59,7 @@ urls |>
     }
 
     # Save summarized annual as a tiff
-    writeRaster(summ_rast, paste0('data/climate_inputs/',variable,'_terra_',period,'_',year,'.tif'))
+    writeRaster(summ_rast, paste0('data/climate_inputs/',variable,'_terra_',period,'_',year,'.tif'), overwrite = TRUE)
     
     # Delete the netCDF file
     unlink(out_file)
@@ -74,14 +74,14 @@ thredds_2C_base <- paste0('http://thredds.northwestknowledge.net:8080/thredds/fi
 
 urls <- expand.grid(thredds_2C_base, variables) |> 
   unite('combo', Var1, Var2, sep = '_') |> 
-  mutate(combo = paste0(combo, '.nc')) |> 
+  mutate(combo = paste0(combo, '.nc')) %>% 
   split(., seq(nrow(.))) 
 
 urls |> 
   walk(\(url){
     
     # Create a filename to save the netcdf to
-    out_file <- paste0('../data/climate_inputs/',sub('.*/TerraClimate2C_','', url))
+    out_file <- paste0('data/climate_inputs/',sub('.*/TerraClimate2C_','', url))
     
     # Download and save
     download.file(url$combo, out_file, mode = 'wb')
@@ -96,12 +96,18 @@ urls |>
     
     if (variable %in% c('def','aet')) {
       summ_rast <- sum(nc_as_rast)
-    } else {
-      summ_rast <- mean(nc_as_rast)
+    } 
+    
+    if (variable == "tmax") {
+      summ_rast <- nc_as_rast[[7]]
+    } 
+    
+    if (variable == "tmin") {
+      summ_rast <- nc_as_rast[[1]]
     }
     
     # Save summarized annual as a tiff
-    writeRaster(summ_rast, paste0('../data/climate_inputs/',variable,'_terra_2C.tif'))
+    writeRaster(summ_rast, paste0('data/climate_inputs/',variable,'_terra_2C.tif'), overwrite = T)
     
     # Delete the netCDF file
     unlink(out_file)
@@ -112,14 +118,14 @@ thredds_2C_base <- paste0('http://thredds.northwestknowledge.net:8080/thredds/fi
 
 urls <- expand.grid(thredds_2C_base, variables) |> 
   unite('combo', Var1, Var2, sep = '_') |> 
-  mutate(combo = paste0(combo, '.nc')) |> 
+  mutate(combo = paste0(combo, '.nc')) %>% 
   split(., seq(nrow(.))) 
 
 urls |> 
   walk(\(url){
     
     # Create a filename to save the netcdf to
-    out_file <- paste0('../data/climate_inputs/',sub('.*/TerraClimate19611990_','', url))
+    out_file <- paste0('data/climate_inputs/',sub('.*/TerraClimate19611990_','', url))
     
     # Download and save
     download.file(url$combo, out_file, mode = 'wb')
@@ -134,12 +140,18 @@ urls |>
     
     if (variable %in% c('def','aet')) {
       summ_rast <- sum(nc_as_rast)
-    } else {
-      summ_rast <- mean(nc_as_rast)
+    } 
+    
+    if (variable == "tmax") {
+      summ_rast <- nc_as_rast[[7]]
+    } 
+    
+    if (variable == "tmin") {
+      summ_rast <- nc_as_rast[[1]]
     }
     
     # Save summarized annual as a tiff
-    writeRaster(summ_rast, paste0('../data/climate_inputs/',variable,'_terra_1961-1990.tif'))
+    writeRaster(summ_rast, paste0('data/climate_inputs/',variable,'_terra_1961-1990.tif'), overwrite = T)
     
     # Delete the netCDF file
     unlink(out_file)
