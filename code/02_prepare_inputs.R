@@ -30,8 +30,8 @@ using('terra','gdalUtilities','purrr')
 files <- list.files(path = 'data/climate_inputs/', pattern = '.*tif$')
 
 # Load the 'water mask' based on landfire, which was created and transformed to the same CRS
-lf_water_mask <- rast('data/parks_water_mask_250.tif')
-
+#lf_water_mask <- rast('data/parks_water_mask_250.tif')
+lf_water_mask <- rast('data/lf_water_mask_4326.tiff')
 # Resample water mask to an example of topo and terra so it matches each
 grid_topo <- rast('data/climate_inputs/tmin_topo_hist_1981-2010.tif')
 # grid_topo_utm <- project(grid_topo, "EPSG:32611")
@@ -41,10 +41,11 @@ grid_topo <- rast('data/climate_inputs/tmin_topo_hist_1981-2010.tif')
 # grid_terra <- rast('../data/climate_inputs/tmin_terra_1961-1990.tif')
 # grid_terra_utm <- project(grid_terra, "EPSG:32611")
 # lf_water_mask_terra <- resample(lf_water_mask, grid_terra_utm)
+lf_water_mask <- resample(lf_water_mask, grid_topo, "near")
 
 # Do the step outlined above for every file in the climate_inputs directory
 files |> 
-  map(function(file){
+  walk(function(file){
     
     # Original file format
     grid_original <- rast(paste0('data/climate_inputs/',file))
@@ -62,16 +63,14 @@ files |>
     }
 
     # Write it out
-    writeRaster(grid_final, paste0('temp_',file),
-                overwrite = TRUE)
+    writeRaster(grid_final, paste0('data/cogs/',file),
+                overwrite = TRUE, 
+                gdal = c("TILED=YES",
+                         "COPY_SRC_OVERVIEWS=YES",
+                         "COMPRESS=DEFLATE"))
    
-    gdal_translate(
-      src_dataset = paste0('temp_',file),
-      dst_dataset = paste0('data/cogs/',file),
-      co = matrix(c("TILED=YES","COPY_SRC_OVERVIEWS=YES","COMPRESS=DEFLATE"),ncol = 1)
-    )
    
-    unlink(paste0('temp_',file))
+    
   })
 
 
