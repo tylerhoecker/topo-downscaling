@@ -20,14 +20,14 @@ library(data.table)
 # ------------------------------------------------------------------------------
 
 # The climate variable short names as they appear in filenames
-clim_vars <- c("tmax","tmin") #c('aet','def','tmax','tmin')
+clim_vars <- c('aet','def','tmax','tmin')
 
 # A 'suffix' or naming convention common to all files to be downscaled
 coarse_name <- 'terra_2C'
-
+coarse_name <- 'terra_hist'
 # Time periods
 times <- c(1985:2015) #paste0('2C_',1985:2015) #c('1961-1990','2C_1985-2015') 
-
+times <- c(1961:2022)
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_1981-2010.tif'
 
@@ -70,10 +70,21 @@ not_done <- unique(sub('.*_','_',to_do[!to_do %in% done]))
 #-------------------------------------------------------------------------------
 # Set parrellelization plan
 availableCores()
-plan(multicore, workers = 45)
+ plan(
+   list(
+     future::tweak(
+       multisession,
+       workers = (availableCores() - 2) %/% 6),
+     future::tweak(
+       multisession,
+       workers = 6)
+     )
+   )
+# plan(multisession, workers = 14)
+options(mc.cores = 16)
 not_done %>% 
   future_walk(\(tile){ # tile=not_done[[1]]
-    
+    options(mc.cores =6)
     if ( length(list.files(paste0(data_root,out_dir), 
                            pattern = paste0('.*',tile)))
          == length(times)) {
@@ -86,16 +97,20 @@ not_done %>%
     crs_out <- crs(tile_rast)
     
     # Collect the centroids of each grid cell in the tile 
-    fine_centroids <- st_as_sf(as.points(tile_rast))
+    fine_centroids <- as.points(tile_rast)
     # Reproject these points to UTM, then cbind()
     
     # Buffers for all fine points, as a spatpolygon
-    fine_buffers <- st_buffer(fine_centroids, dist = buff_dist)
+    fine_buffers <- st_as_sf(buffer(fine_centroids, buff_dist))
+    
+    #load in templates
+    template_fine <- rast(paste0(tile_templ_dir,'template_fine_.tif'))
+    template_coarse <- rast(paste0(tile_templ_dir,'template_coarse_.tif'))
     
     as.list(times) %>% 
       walk(\(time){
-        
-        if (file.exists(paste0(data_root,out_dir,time,tile))) {
+        tic()
+        if (file.exists(paste0(data_root,out_dir,coarse_name,"_",time,tile))) {
           return(NULL)
         } else {
           # Make a log
@@ -105,35 +120,36 @@ not_done %>%
         }
         
         # Skip tiles that have not been made yet
-        if( file.exists(paste0(tile_templ_dir,'ds_coarse_',time,tile)) ){
-          ds_coarse_tile <- rast(paste0(tile_templ_dir,'ds_coarse_',time,tile))
-          template_fine_tile <- rast(paste0(tile_templ_dir,'template_fine_',time,tile))
-          template_coarse_tile <- rast(paste0(tile_templ_dir,'template_coarse_',time,tile))
+        if( file.exists(paste0(tile_templ_dir,'ds_coarse_',coarse_name,'_',time,'.tif')) ){
+          ds_coarse <- rast(paste0(tile_templ_dir,'ds_coarse_',coarse_name,'_',time,'.tif'))
+          
+          
         } else {
           return(NULL)
         }
         
         # Nugget distance, in meters - points within this distance are not used in regression
         # Flint and Flint suggest using the resolution of the layer to be downscaled (here, 4-km)
-        nug_dist <- round(max(res(template_coarse_tile)))+10
+        nug_dist <- 4000 / 111000
         
         # Coarse extract for all variables, within buffer distance, returns list for each buffer
-        coarse_dat <- exact_extract(ds_coarse_tile, fine_buffers, include_xy = T)
+        coarse_dat <- exact_extract(ds_coarse, fine_buffers, include_xy = T)
         
         # Template extract for all variables, within buffer distance, returns list for each buffer
-        template_dat <- exact_extract(template_coarse_tile, fine_buffers)
+        template_dat <- exact_extract(template_coarse, fine_buffers)
         
         # Fine point extract for all variables - returns dataframe with column for each variable
-        fine_dat <- terra::extract(template_fine_tile, fine_centroids, xy = T, threads = T)
+        fine_dat <- terra::extract(template_fine, fine_centroids, xy = T, threads = T)
         
         # Clean up memory
-        rm(ds_coarse_tile, template_fine_tile, template_coarse_tile, fine_buffers, fine_centroids)
+        rm(ds_coarse)
         #gc()
-        
+        toc()
         # --------------------------------------------------------------------------
         # Iterate over each point of `tile`
         #---------------------------------------------------------------------------
-        focal_result_df <- imap_dfr(coarse_dat, \(pt_dat,i){
+        tic()
+        focal_result_df <- future_imap_dfr(coarse_dat, \(pt_dat,i){
           
           # Fine-grid information from fine-grid focal location
           X <- fine_dat[i,'x']
@@ -216,9 +232,9 @@ not_done %>%
             cbind(result_df_wide) |> 
             rast(type = 'xyz', crs = crs_out)
         }
-        
+        toc()
         writeRaster(out_rast, 
-                    paste0(data_root,out_dir,time,tile),
+                    paste0(data_root,out_dir,coarse_name,"_",time,tile),
                     overwrite = T)
         
         rm(focal_result_df, result_df_wide, out_rast)
