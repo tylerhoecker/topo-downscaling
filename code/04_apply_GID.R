@@ -56,7 +56,7 @@ done <- times %>%
 
 to_do <- times %>% 
   map(\(time){
-    paste0(time,list.files(paste0(data_root,'tiles/')))
+    paste0(coarse_name, '_',time,list.files(paste0(data_root,'tiles/')))
   }) %>% 
   list_c()
 
@@ -68,6 +68,30 @@ not_done <- unique(sub('.*_','_',to_do[!to_do %in% done]))
 #-------------------------------------------------------------------------------
 # Prepare inputs
 #-------------------------------------------------------------------------------
+# create distance function using great circle distance
+great_circle_distance <- function(lat1, lon1, lat2, lon2) {
+  # Convert degrees to radians
+  lat1 <- lat1 * pi / 180
+  lon1 <- lon1 * pi / 180
+  lat2 <- lat2 * pi / 180
+  lon2 <- lon2 * pi / 180
+  
+  # Radius of the Earth in kilometers
+  earth_radius <- 6371000.0
+  
+  # Differences
+  dlat <- lat2 - lat1
+  dlon <- lon2 - lon1
+  
+  # Haversine formula
+  a <- sin(dlat / 2)^2 + cos(lat1) * cos(lat2) * sin(dlon / 2)^2
+  c <- 2 * atan2(sqrt(a), sqrt(1 - a))
+  
+  # Distance
+  distance <- earth_radius * c
+  
+  return(distance)
+}
 # Set parrellelization plan
 availableCores()
  plan(
@@ -109,7 +133,7 @@ not_done %>%
     
     as.list(times) %>% 
       walk(\(time){
-        tic()
+        
         if (file.exists(paste0(data_root,out_dir,coarse_name,"_",time,tile))) {
           return(NULL)
         } else {
@@ -130,7 +154,7 @@ not_done %>%
         
         # Nugget distance, in meters - points within this distance are not used in regression
         # Flint and Flint suggest using the resolution of the layer to be downscaled (here, 4-km)
-        nug_dist <- 4000 / 111000
+        nug_dist <- 4000 
         
         # Coarse extract for all variables, within buffer distance, returns list for each buffer
         coarse_dat <- exact_extract(ds_coarse, fine_buffers, include_xy = T)
@@ -144,11 +168,11 @@ not_done %>%
         # Clean up memory
         rm(ds_coarse)
         #gc()
-        toc()
+        
         # --------------------------------------------------------------------------
         # Iterate over each point of `tile`
         #---------------------------------------------------------------------------
-        tic()
+        
         focal_result_df <- future_imap_dfr(coarse_dat, \(pt_dat,i){
           
           # Fine-grid information from fine-grid focal location
@@ -156,11 +180,9 @@ not_done %>%
           Y <- fine_dat[i,'y']
           Cs <- fine_dat[i,]
           
-          # Distance calculations for each point in this tile
-          # Perhaps this could be vectorized somehow, but I couldn't figure it out
-          x_dist <- X - pt_dat[['x']]
-          y_dist <- Y - pt_dat[['y']]
-          pt_dat[['di']] <- sqrt(x_dist^2 + y_dist^2)
+          # Distance calculations for each point in this tile using GCD
+          pt_dat[["di"]] <- great_circle_distance(Y, X, pt_dat$y, pt_dat$x)
+          
           
           # Map (apply), returning dataframe, over each climate variable 
           #focal_result_df <- data.frame('pt_ID' = numeric(0), 'var' = character(0), 'gids' = numeric(0))
@@ -208,8 +230,7 @@ not_done %>%
               Z = sum1/sum2 
               
               # Remove created objects that will not be needed
-              rm(C, model_df, lm_mod, sum1, sum2)
-              
+              rm(C, model_df, lm_mod, sum1, sum2, Cx, Cy, Cc, x_lm, y_lm)
               # Return as dataframe (foreach works like a function)
               return(data.frame('pt_ID' = i,
                                 'var' = clim_var,
@@ -232,14 +253,16 @@ not_done %>%
             cbind(result_df_wide) |> 
             rast(type = 'xyz', crs = crs_out)
         }
-        toc()
+        
         writeRaster(out_rast, 
                     paste0(data_root,out_dir,coarse_name,"_",time,tile),
                     overwrite = T)
         
-        rm(focal_result_df, result_df_wide, out_rast)
-        gc()
+        rm(focal_result_df, result_df_wide, out_rast, coarse_dat,
+           template_dat,fine_dat, nug_dist)
       })
+    rm(tile_rast, fine_centroids, fine_buffers, template_fine, template_coarse)
+    gc()
   },.progress = T)
 
   plan(sequential)
