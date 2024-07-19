@@ -110,55 +110,11 @@ c2_residual_list <- foreach(i = c2_years, .packages = c("terra", "tidyverse")) %
 save(c2_residual_list, file = "validation/2c_residual_list.RData")
 
 ### now perform for 30 year normals- historical ###
+#load topoterra normal
+topoterra_normal <- rast("data/merged_output/topoterra_hist_1961-2022.tif")
+#terraclim_normal 
+terraclim_normal <- rast("data/merged_output/terra_hist_1961-2022.tif")
 
-topoterra_files_hist <- list.files("data/merged_output", pattern = "topoterra_hist", full.names = TRUE) 
-#filter to 1961:1:1990
-topoterra_files_hist <- topoterra_files_hist[1:30]
-topoterra_stack <- map(topoterra_files_hist, rast)
-#organize into indivudal stacks for each variable
-aet <- vector("list", length(topoterra_stack))
-def <- vector("list", length(topoterra_stack))
-tmax <- vector("list", length(topoterra_stack))
-tmin <- vector("list", length(topoterra_stack))
-for(i in 1:length(topoterra_stack)){
-  aet[[i]] <- topoterra_stack[[i]][[1]]
-  def[[i]] <- topoterra_stack[[i]][[2]]
-  tmax[[i]] <- topoterra_stack[[i]][[3]]
-  tmin[[i]] <- topoterra_stack[[i]][[4]]
-  
-}
-#calculate normal
-aet_normal <- rast(aet) %>% median()
-def_normal<- rast(def) %>% median()
-tmax_normal <- rast(tmax) %>% median()
-tmin_normal <- rast(tmin) %>% median()
-
-#combine
-topoterra_normal <- c(aet_normal, def_normal, tmax_normal, tmin_normal)
-names(topoterra_normal) <- names(topoterra_stack[[1]])
-
-#terraclim_normal cleaned to match topoterra
-terraclim_files <- list.files("data/cogs", pattern = "hist_1961-1990.tif$", full.names = TRUE)
-
-terraclim_normal <- rast(terraclim_files) %>% project(crs(topoterra_normal))
-names(terraclim_normal) <- names(topoterra_stack[[1]])
-##  clean terraclim like topoterra
-# AET
-terraclim_normal[['aet']][terraclim_normal[['aet']] < 0] = 0
-terraclim_normal[['aet']][terraclim_normal[['aet']] > 1000] = 1000
-terraclim_normal[['aet']] <- round(terraclim_normal[['aet']],0) 
-# DEF
-terraclim_normal[['def']][terraclim_normal[['def']] < 0] = 0
-terraclim_normal[['def']][terraclim_normal[['def']] > 2500] = 2500
-terraclim_normal[['def']] <- round(terraclim_normal[['def']],0)
-# TMAX
-terraclim_normal[['tmax']][terraclim_normal[['tmax']] < -5] = -5 # This happens to not be needed, but just for completeness
-terraclim_normal[['tmax']][terraclim_normal[['tmax']] > 35] = 35
-terraclim_normal[['tmax']] <- round(terraclim_normal[['tmax']], 2)*10^2
-# TMIN
-terraclim_normal[['tmin']][terraclim_normal[['tmin']] < -25] = -25
-terraclim_normal[['tmin']][terraclim_normal[['tmin']] > 20] = 20
-terraclim_normal[['tmin']] <- round(terraclim_normal[['tmin']], 2)*10^2
 
 #resample topoterra_normal to terraclim 
 topoterra_normal_4k <- resample(topoterra_normal, terraclim_normal, threads = T)
@@ -183,52 +139,11 @@ topoterra_normal_4k <- resample(topoterra_normal, terraclim_normal, threads = T)
   historical_normal_list <- list(df = df, residual_histograms = residual_histograms)
   
   ### repeat for 2C ###
-  topoterra_files_2c <- list.files("data/merged_output", pattern = "topoterra_2C", full.names = TRUE)
-topoterra_stack <- map(topoterra_files_2c, rast)
-#organize into indivudal stacks for each variable
-aet <- vector("list", length(topoterra_stack))
-def <- vector("list", length(topoterra_stack))
-tmax <- vector("list", length(topoterra_stack))
-tmin <- vector("list", length(topoterra_stack))
-for(i in 1:length(topoterra_stack)){
-  aet[[i]] <- topoterra_stack[[i]][[1]]
-  def[[i]] <- topoterra_stack[[i]][[2]]
-  tmax[[i]] <- topoterra_stack[[i]][[3]]
-  tmin[[i]] <- topoterra_stack[[i]][[4]]
-  
-}
-#calculate normal
-aet_normal <- rast(aet) %>% median()
-def_normal<- rast(def) %>% median()
-tmax_normal <- rast(tmax) %>% median()
-tmin_normal <- rast(tmin) %>% median()
+  topoterra_normal <- rast("data/merged_output/topoterra_2C_1985-2015.tif")
 
-#combine
-topoterra_normal <- c(aet_normal, def_normal, tmax_normal, tmin_normal)
-names(topoterra_normal) <- names(topoterra_stack[[1]])
-#TODO
 #terraclim_normal cleaned to match topoterra
-terraclim_2c_files <- list.files("data/cogs", pattern = "2C.tif$", full.names = T)
 
-terraclim_normal <- rast(terraclim_2c_files) %>% project(crs(topoterra_normal))
-names(terraclim_normal) <- names(topoterra_stack[[1]])
-##  clean terraclim like topoterra
-# AET
-terraclim_normal[['aet']][terraclim_normal[['aet']] < 0] = 0
-terraclim_normal[['aet']][terraclim_normal[['aet']] > 1000] = 1000
-terraclim_normal[['aet']] <- round(terraclim_normal[['aet']],0)
-# DEF
-terraclim_normal[['def']][terraclim_normal[['def']] < 0] = 0
-terraclim_normal[['def']][terraclim_normal[['def']] > 2500] = 2500
-terraclim_normal[['def']] <- round(terraclim_normal[['def']],0)
-# TMAX
-terraclim_normal[['tmax']][terraclim_normal[['tmax']] < -5] = -5 # This happens to not be needed, but just for completeness
-terraclim_normal[['tmax']][terraclim_normal[['tmax']] > 35] = 35
-terraclim_normal[['tmax']] <- round(terraclim_normal[['tmax']], 2)*10^2
-# TMIN
-terraclim_normal[['tmin']][terraclim_normal[['tmin']] < -25] = -25
-terraclim_normal[['tmin']][terraclim_normal[['tmin']] > 20] = 20
-terraclim_normal[['tmin']] <- round(terraclim_normal[['tmin']], 2)*10^2
+terraclim_normal <- rast("data/merged_output/terra_2C_1985-2015.tif")
 
 #resample topoterra_normal to terraclim
 topoterra_normal_4k <- resample(topoterra_normal, terraclim_normal, threads = T)
