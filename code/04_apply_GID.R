@@ -1,5 +1,6 @@
 # ------------------------------------------------------------------------------
 # Prepared by Tyler Hoecker: https://github.com/tylerhoecker
+# and Jeffrey Chandler: https://github.com/souma4
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 # Import  packages
@@ -13,6 +14,9 @@ library(exactextractr)
 library(terra)
 # library(future.callr)
 library(data.table)
+library(doParallel)
+library(foreach)
+
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
@@ -20,14 +24,14 @@ library(data.table)
 # ------------------------------------------------------------------------------
 
 # The climate variable short names as they appear in filenames
-clim_vars <- c("tmax","tmin") #c('aet','def','tmax','tmin')
+clim_vars <- c('aet','def','tmax','tmin')
 
 # A 'suffix' or naming convention common to all files to be downscaled
 coarse_name <- 'terra_2C'
-
+coarse_name <- 'terra_hist'
 # Time periods
 times <- c(1985:2015) #paste0('2C_',1985:2015) #c('1961-1990','2C_1985-2015') 
-
+times <- c(1961:2022)
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_1981-2010.tif'
 
@@ -56,7 +60,7 @@ done <- times %>%
 
 to_do <- times %>% 
   map(\(time){
-    paste0(time,list.files(paste0(data_root,'tiles/')))
+    paste0(coarse_name, '_',time,list.files(paste0(data_root,'tiles/')))
   }) %>% 
   list_c()
 
@@ -68,12 +72,53 @@ not_done <- unique(sub('.*_','_',to_do[!to_do %in% done]))
 #-------------------------------------------------------------------------------
 # Prepare inputs
 #-------------------------------------------------------------------------------
+# create distance function using great circle distance
+great_circle_distance <- function(lat1, lon1, lat2, lon2) {
+  # Convert degrees to radians
+  lat1 <- lat1 * pi / 180
+  lon1 <- lon1 * pi / 180
+  lat2 <- lat2 * pi / 180
+  lon2 <- lon2 * pi / 180
+  
+  # Radius of the Earth in kilometers
+  earth_radius <- 6371000.0
+  
+  # Differences
+  dlat <- lat2 - lat1
+  dlon <- lon2 - lon1
+  
+  # Haversine formula
+  a <- sin(dlat / 2)^2 + cos(lat1) * cos(lat2) * sin(dlon / 2)^2
+  c <- 2 * atan2(sqrt(a), sqrt(1 - a))
+  
+  # Distance
+  distance <- earth_radius * c
+  
+  return(distance)
+}
 # Set parrellelization plan
 availableCores()
-plan(multicore, workers = 45)
+#  plan(
+#    list(
+#      future::tweak(
+#        multisession,
+#        workers = (availableCores() - 2) %/% 2),
+#      future::tweak(
+#        multisession,
+#        workers = 2)
+#      )
+#    )
+# build parallel backend
+cl <- makeCluster((availableCores() - 2)/1)
+registerDoParallel(cl)
+#plan(multicore, workers = 43)
+plan(multicore, workers = 2)
+options(future.globals.maxSize = 10000 * 1024^2)
 not_done %>% 
-  future_walk(\(tile){ # tile=not_done[[1]]
-    
+  #future_walk(\(tile){ # tile=not_done[[1]]
+  foreach(tile = .,
+  .packages = c('tidyr', 'dplyr', 'purrr', 'furrr', 'sf', 'exactextractr', 'terra', 'data.table', 'doParallel', 'foreach'),
+  .export = c('data_root', 'out_dir', 'coarse_name', 'times', 'tile_templ_dir', 'buff_dist')) %dopar% {
     if ( length(list.files(paste0(data_root,out_dir), 
                            pattern = paste0('.*',tile)))
          == length(times)) {
@@ -86,16 +131,20 @@ not_done %>%
     crs_out <- crs(tile_rast)
     
     # Collect the centroids of each grid cell in the tile 
-    fine_centroids <- st_as_sf(as.points(tile_rast))
+    fine_centroids <- as.points(tile_rast)
     # Reproject these points to UTM, then cbind()
     
     # Buffers for all fine points, as a spatpolygon
-    fine_buffers <- st_buffer(fine_centroids, dist = buff_dist)
+    fine_buffers <- st_as_sf(buffer(fine_centroids, buff_dist))
+    
+    #load in templates
+    template_fine <- rast(paste0(tile_templ_dir,'template_fine_.tif'))
+    template_coarse <- rast(paste0(tile_templ_dir,'template_coarse_.tif'))
     
     as.list(times) %>% 
       walk(\(time){
         
-        if (file.exists(paste0(data_root,out_dir,time,tile))) {
+        if (file.exists(paste0(data_root,out_dir,coarse_name,"_",time,tile))) {
           return(NULL)
         } else {
           # Make a log
@@ -105,34 +154,35 @@ not_done %>%
         }
         
         # Skip tiles that have not been made yet
-        if( file.exists(paste0(tile_templ_dir,'ds_coarse_',time,tile)) ){
-          ds_coarse_tile <- rast(paste0(tile_templ_dir,'ds_coarse_',time,tile))
-          template_fine_tile <- rast(paste0(tile_templ_dir,'template_fine_',time,tile))
-          template_coarse_tile <- rast(paste0(tile_templ_dir,'template_coarse_',time,tile))
+        if( file.exists(paste0(tile_templ_dir,'ds_coarse_',coarse_name,'_',time,'.tif')) ){
+          ds_coarse <- rast(paste0(tile_templ_dir,'ds_coarse_',coarse_name,'_',time,'.tif'))
+          
+          
         } else {
           return(NULL)
         }
         
         # Nugget distance, in meters - points within this distance are not used in regression
         # Flint and Flint suggest using the resolution of the layer to be downscaled (here, 4-km)
-        nug_dist <- round(max(res(template_coarse_tile)))+10
+        nug_dist <- 4000 
         
         # Coarse extract for all variables, within buffer distance, returns list for each buffer
-        coarse_dat <- exact_extract(ds_coarse_tile, fine_buffers, include_xy = T)
+        coarse_dat <- exact_extract(ds_coarse, fine_buffers, include_xy = T)
         
         # Template extract for all variables, within buffer distance, returns list for each buffer
-        template_dat <- exact_extract(template_coarse_tile, fine_buffers)
+        template_dat <- exact_extract(template_coarse, fine_buffers)
         
         # Fine point extract for all variables - returns dataframe with column for each variable
-        fine_dat <- terra::extract(template_fine_tile, fine_centroids, xy = T, threads = T)
+        fine_dat <- terra::extract(template_fine, fine_centroids, xy = T, threads = T)
         
         # Clean up memory
-        rm(ds_coarse_tile, template_fine_tile, template_coarse_tile, fine_buffers, fine_centroids)
+        rm(ds_coarse)
         #gc()
         
         # --------------------------------------------------------------------------
         # Iterate over each point of `tile`
         #---------------------------------------------------------------------------
+        
         focal_result_df <- imap_dfr(coarse_dat, \(pt_dat,i){
           
           # Fine-grid information from fine-grid focal location
@@ -140,11 +190,9 @@ not_done %>%
           Y <- fine_dat[i,'y']
           Cs <- fine_dat[i,]
           
-          # Distance calculations for each point in this tile
-          # Perhaps this could be vectorized somehow, but I couldn't figure it out
-          x_dist <- X - pt_dat[['x']]
-          y_dist <- Y - pt_dat[['y']]
-          pt_dat[['di']] <- sqrt(x_dist^2 + y_dist^2)
+          # Distance calculations for each point in this tile using GCD
+          pt_dat[["di"]] <- great_circle_distance(Y, X, pt_dat$y, pt_dat$x)
+          
           
           # Map (apply), returning dataframe, over each climate variable 
           #focal_result_df <- data.frame('pt_ID' = numeric(0), 'var' = character(0), 'gids' = numeric(0))
@@ -158,12 +206,12 @@ not_done %>%
               # Build dataframe with coarse-grid information from coarse grid points within buffer distance
               # Mostly this is just re-naming things so they match the Flint and Flint nomenclature
               model_df <- data.table(
-                'Zi' = pt_dat[,clim_var],
-                'Xi' = pt_dat[,'x'],
-                'Yi' = pt_dat[,'y'],
-                'Ci' = template_dat[[i]][,clim_var],
+                'Zi' = pt_dat[,clim_var], #respond
+                'Xi' = pt_dat[,'x'], #longitude
+                'Yi' = pt_dat[,'y'], #latitude
+                'Ci' = template_dat[[i]][,clim_var], #coarse scale predictors
                 # Distances between fine-grid focal location and coarse centroids
-                'di' = pt_dat[,'di']) 
+                'di' = pt_dat[,'di']) #distance
               
               # Remove NAs - happens at edges
               model_df <- na.omit(model_df)
@@ -192,8 +240,7 @@ not_done %>%
               Z = sum1/sum2 
               
               # Remove created objects that will not be needed
-              rm(C, model_df, lm_mod, sum1, sum2)
-              
+              rm(C, model_df, lm_mod, sum1, sum2, Cx, Cy, Cc, x_lm, y_lm)
               # Return as dataframe (foreach works like a function)
               return(data.frame('pt_ID' = i,
                                 'var' = clim_var,
@@ -218,12 +265,14 @@ not_done %>%
         }
         
         writeRaster(out_rast, 
-                    paste0(data_root,out_dir,time,tile),
+                    paste0(data_root,out_dir,coarse_name,"_",time,tile),
                     overwrite = T)
         
-        rm(focal_result_df, result_df_wide, out_rast)
-        gc()
+        rm(focal_result_df, result_df_wide, out_rast, coarse_dat,
+           template_dat,fine_dat, nug_dist)
       })
-  },.progress = T)
-
+    rm(tile_rast, fine_centroids, fine_buffers, template_fine, template_coarse)
+    gc()
+  }
+stopImplicitCluster()
   plan(sequential)

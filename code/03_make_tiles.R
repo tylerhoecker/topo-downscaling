@@ -12,10 +12,10 @@ clim_vars <- c("aet","def","tmax","tmin")#c('aet','def','tmax','tmin')
 
 # A 'suffix' or naming convention common to all files to be downscaled
 coarse_name <- 'terra_2C'
-
+coarse_name <- 'terra_hist'
 # Time periods
-times <- c(1986:1991) #paste0(1961:1990) #c('1961-1990','2C_1985-2015') #,,paste0('2C_',1985:2015)'1961-1990','2C_1985-2015'
-
+times <- c(1985:2015) #paste0(1961:1990) #c('1961-1990','2C_1985-2015') #,,paste0('2C_',1985:2015)'1961-1990','2C_1985-2015'
+times <- c(1961:2022)
 # A 'suffix' or naming convention common to the files be used as a 'template' for downscaling
 templ_name <- '_topo_hist_1981-2010.tif'
 
@@ -67,10 +67,24 @@ writeCOG <- function(x, filename){
 if (!file.exists(tile_templ_dir)) {
   dir.create(tile_templ_dir)
 }
+ # Fine template 
+    template_fine <- rast(paste0('data/cogs/',clim_vars,templ_name))
+    names(template_fine) <- clim_vars
+    template_fine <- round(template_fine, 1)
+    
+    # Resample, as a form of aggregation, the fine data to coarse grid, so they can be regressed
+ds_coarse_template <- rast(paste0('data/cogs/',clim_vars,'_',coarse_name,'_',times[1],'.tif')) %>%
+  project(crs(template_fine))
+names(ds_coarse_template) <- clim_vars
+    template_coarse <- resample(template_fine, ds_coarse_template, 'bilinear', threads = T)
 
-plan(multicore, workers = 10)
+#write out templates
+    writeRaster(template_fine, paste0(tile_templ_dir,'template_fine_','.tif'), overwrite = TRUE)
+    writeRaster(template_coarse, paste0(tile_templ_dir,'template_coarse_','.tif'), overwrite = TRUE)
+        
+plan(multicore, workers = 4)
 
-as.list(times) %>% 
+times %>% 
   future_walk(\(time){
     
     n_complete <- length(
@@ -88,72 +102,15 @@ as.list(times) %>%
     }
     
     # Stack of coarse files (all variables) for this time --
-    ds_coarse <- rast(paste0('data/cogs/',clim_vars,'_',coarse_name,'_',time,'.tif'))
+    ds_coarse <- rast(paste0('data/cogs/',clim_vars,'_',coarse_name,'_',time,'.tif')) %>%
+      project(crs("EPSG:4326"))
     names(ds_coarse) <- clim_vars
     ds_coarse <- round(ds_coarse, 1)
     
-    # Fine template 
-    template_fine <- rast(paste0('data/cogs/',clim_vars,templ_name))
-    names(template_fine) <- clim_vars
-    template_fine <- round(template_fine, 1)
+    #write out coarse data
+    writeCOG(ds_coarse, paste0(tile_templ_dir,'ds_coarse_',coarse_name,"_",time,'.tif'))
+   
     
-    # Resample, as a form of aggregation, the fine data to coarse grid, so they can be regressed
-    template_coarse <- resample(template_fine, ds_coarse, 'bilinear', threads = T)
-    
-    list.files(tile_dir) %>% 
-
-      walk(\(tile){ # tile=list.files(tile_dir)[[5101]]
-      
-      ds_done <- file.exists(
-          paste0(tile_templ_dir,'ds_coarse_',
-                 time,
-                 tile)
-      )
-
-      fine_done <- file.exists(
-          paste0(tile_templ_dir,'template_fine_',
-                 time,
-                 tile)
-      )
-
-      if( ds_done & fine_done ){
-          return(NULL)
-        } else {
-          print(paste0('Running:',time,tile))
-      }
-        
-        # Load the tile
-        tile_rast <- rast(paste0(tile_dir,tile))
-        
-        # Turn the extent of the raster into a spatial vector
-        tile_border <- ext(tile_rast)
-        tile_border <- vect(tile_border)
-        
-        # Create a buffer around the tile (in this case, 50 km )
-        tile_border <- buffer(tile_border, width = buff_dist)
-        
-        # Crop input rasters (all variable layers at once)
-        ds_coarse_tile <- crop(ds_coarse, tile_border)
-        template_fine_tile <- crop(template_fine, tile_border)
-        template_coarse_tile <- crop(template_coarse, tile_border)
-        
-        # Write them out
-        writeCOG(
-          ds_coarse_tile, 
-          paste0(tile_templ_dir,'ds_coarse_',time,tile)
-        )
-        writeCOG(
-          template_fine_tile, 
-          paste0(tile_templ_dir,'template_fine_',time,tile)
-        )
-        writeCOG(
-          template_coarse_tile, 
-          paste0(tile_templ_dir,'template_coarse_',time,tile)
-        )
-        
-        rm(tile_rast, tile_border, ds_coarse_tile, template_fine_tile, template_coarse_tile)
-        gc()
-      })
     rm(ds_coarse, template_fine, template_coarse)
     gc()
   })
