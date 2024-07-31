@@ -1,5 +1,6 @@
 # ------------------------------------------------------------------------------
 # Prepared by Tyler Hoecker: https://github.com/tylerhoecker
+# and Jeffrey Chandler: https://github.com/souma4
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 # Import  packages
@@ -13,6 +14,9 @@ library(exactextractr)
 library(terra)
 # library(future.callr)
 library(data.table)
+library(doParallel)
+library(foreach)
+
 # ------------------------------------------------------------------------------
 
 # ------------------------------------------------------------------------------
@@ -94,21 +98,27 @@ great_circle_distance <- function(lat1, lon1, lat2, lon2) {
 }
 # Set parrellelization plan
 availableCores()
- plan(
-   list(
-     future::tweak(
-       multisession,
-       workers = (availableCores() - 2) %/% 6),
-     future::tweak(
-       multisession,
-       workers = 6)
-     )
-   )
-# plan(multisession, workers = 14)
-options(mc.cores = 16)
+#  plan(
+#    list(
+#      future::tweak(
+#        multisession,
+#        workers = (availableCores() - 2) %/% 2),
+#      future::tweak(
+#        multisession,
+#        workers = 2)
+#      )
+#    )
+# build parallel backend
+cl <- makeCluster((availableCores() - 2)/1)
+registerDoParallel(cl)
+#plan(multicore, workers = 43)
+plan(multicore, workers = 2)
+options(future.globals.maxSize = 10000 * 1024^2)
 not_done %>% 
-  future_walk(\(tile){ # tile=not_done[[1]]
-    options(mc.cores =6)
+  #future_walk(\(tile){ # tile=not_done[[1]]
+  foreach(tile = .,
+  .packages = c('tidyr', 'dplyr', 'purrr', 'furrr', 'sf', 'exactextractr', 'terra', 'data.table', 'doParallel', 'foreach'),
+  .export = c('data_root', 'out_dir', 'coarse_name', 'times', 'tile_templ_dir', 'buff_dist')) %dopar% {
     if ( length(list.files(paste0(data_root,out_dir), 
                            pattern = paste0('.*',tile)))
          == length(times)) {
@@ -173,7 +183,7 @@ not_done %>%
         # Iterate over each point of `tile`
         #---------------------------------------------------------------------------
         
-        focal_result_df <- future_imap_dfr(coarse_dat, \(pt_dat,i){
+        focal_result_df <- imap_dfr(coarse_dat, \(pt_dat,i){
           
           # Fine-grid information from fine-grid focal location
           X <- fine_dat[i,'x']
@@ -196,12 +206,12 @@ not_done %>%
               # Build dataframe with coarse-grid information from coarse grid points within buffer distance
               # Mostly this is just re-naming things so they match the Flint and Flint nomenclature
               model_df <- data.table(
-                'Zi' = pt_dat[,clim_var],
-                'Xi' = pt_dat[,'x'],
-                'Yi' = pt_dat[,'y'],
-                'Ci' = template_dat[[i]][,clim_var],
+                'Zi' = pt_dat[,clim_var], #respond
+                'Xi' = pt_dat[,'x'], #longitude
+                'Yi' = pt_dat[,'y'], #latitude
+                'Ci' = template_dat[[i]][,clim_var], #coarse scale predictors
                 # Distances between fine-grid focal location and coarse centroids
-                'di' = pt_dat[,'di']) 
+                'di' = pt_dat[,'di']) #distance
               
               # Remove NAs - happens at edges
               model_df <- na.omit(model_df)
@@ -263,6 +273,6 @@ not_done %>%
       })
     rm(tile_rast, fine_centroids, fine_buffers, template_fine, template_coarse)
     gc()
-  },.progress = T)
-
+  }
+stopImplicitCluster()
   plan(sequential)

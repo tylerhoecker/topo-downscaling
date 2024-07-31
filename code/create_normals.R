@@ -43,9 +43,8 @@ terraclimate_normal[['tmin']] <- round(terraclimate_normal[['tmin']], 2)*10^2
 
 #write out
 writeRaster(terraclimate_normal, "data/merged_output/terra_hist_1961-2022.tif",
-            overwrite = TRUE, 
-            gdal = c("TILED=YES",
-                     "COMPRESS=DEFLATE"))
+            overwrite = TRUE,
+            datatype = "INT2S")
 
 #### TopoTerra
 #load topoterra
@@ -125,8 +124,7 @@ terraclimate_normal[['tmin']] <- round(terraclimate_normal[['tmin']], 2)*10^2
 #write out
 writeRaster(terraclimate_normal, "data/merged_output/terra_2C_1985-2015.tif",
             overwrite = TRUE, 
-            gdal = c("TILED=YES",
-                     "COMPRESS=DEFLATE"))
+            datatype = "INT2S")
 
 #### TopoTerra
 #load topoterra
