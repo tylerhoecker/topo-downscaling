@@ -95,8 +95,8 @@ station_data <- future_map(valid_station_files, \(station){
   monthly_data <- filtered_station %>%
     group_by(YEAR, MONTH) %>%
     summarise(
-      TMAX = max(TMAX.VALUE, na.rm = TRUE),
-      TMIN = min(TMIN.VALUE, na.rm = TRUE)
+      TMAX = mean(TMAX.VALUE, na.rm = TRUE),
+      TMIN = mean(TMIN.VALUE, na.rm = TRUE)
     )
   
   # summarize to yearly 
@@ -120,7 +120,7 @@ station_data <- rbindlist(station_data)
   yearly_station_data <- as.data.frame(stations_US, geom = "WKT") %>%
   right_join(station_data, by = c("station_id" = "station_id")) %>%
   vect(., geom = c("geometry"), crs = crs(stations_US)) %>%
-  subset(subset = !is.na(station_id), select = c("station_id", "YEAR", "TMAX", "TMIN"))
+  terra::subset(subset = !is.na(station_id), select = c(station_id, YEAR, TMAX, TMIN), NSE = TRUE)
 
 # save the data
 writeVector(yearly_station_data, "validation/station_data/complete_station_data.gpkg", overwrite = TRUE)
